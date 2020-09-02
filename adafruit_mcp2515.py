@@ -52,6 +52,11 @@ _LOAD_TX1 = const(0x42)
 _LOAD_TX2 = const(0x44)
 _READ_STATUS = const(0xA0)
 
+_SEND_TX0 = const(0x81)
+_SEND_TX1 = const(0x82)
+_SEND_TX2 = const(0x84)
+_SEND_ALL = const(0x87)
+
 # Registers
 
 _CANINTE = const(0x2B)
@@ -110,13 +115,13 @@ _STAT_TX2_PENDING = const(0x40)
 _STAT_TX_PENDING_MASK = const(_STAT_TX0_PENDING | _STAT_TX1_PENDING
                               | _STAT_TX2_PENDING)
 
-
-_EXTENDED_ID_MASK = ((1<<18)-1) # bottom 18 bits
-_SEND_TIMEOUT_MS = const(500)  # 500ms
+_EXTENDED_ID_MASK = ((1 << 18) - 1)  # bottom 18 bits
+_SEND_TIMEOUT_MS = const(5)  # 500ms
+_MAX_CAN_MSG_LEN = 8  #?!
 
 # perhaps this will be stateful later?
-TransmitBuffer = namedtuple("TransmitBuffer",
-                            ['CTRL_REG', 'STD_ID_REG', 'INT_FLAG_MASK', 'LOAD_CMD'])
+TransmitBuffer = namedtuple(
+    "TransmitBuffer", ['CTRL_REG', 'STD_ID_REG', 'INT_FLAG_MASK', 'LOAD_CMD', 'SEND_CMD'])
 
 
 def _has_elapsed(start, timeout_ms):
@@ -147,15 +152,18 @@ class MCP2515:
             TransmitBuffer(CTRL_REG=_TXB0CTRL,
                            STD_ID_REG=_TXB0SIDH,
                            INT_FLAG_MASK=_TX0IF,
-                           LOAD_CMD=_LOAD_TX0),
+                           LOAD_CMD=_LOAD_TX0,
+                           SEND_CMD=_SEND_TX0),
             TransmitBuffer(CTRL_REG=_TXB1CTRL,
                            STD_ID_REG=_TXB1SIDH,
                            INT_FLAG_MASK=_TX1IF,
-                           LOAD_CMD=_LOAD_TX1),
+                           LOAD_CMD=_LOAD_TX1,
+                           SEND_CMD=_SEND_TX1),
             TransmitBuffer(CTRL_REG=_TXB2CTRL,
                            STD_ID_REG=_TXB2SIDH,
                            INT_FLAG_MASK=_TX2IF,
-                           LOAD_CMD=_LOAD_TX2)
+                           LOAD_CMD=_LOAD_TX2,
+                           SEND_CMD=_SEND_TX2)
         ]
 
     def initialize(self):
@@ -206,8 +214,8 @@ class MCP2515:
 
     def send_buffer(self,
                     message_buffer,
-                    tx_id=0x00,
-                    ext=None,
+                    tx_id,
+                    extended_id=False,
                     rtr=False,
                     wait_sent=True):
         """send a message buffer"""
@@ -217,7 +225,8 @@ class MCP2515:
         # TODO: Timeout
         tx_buff = self._get_tx_buffer()  # info = addr.
 
-        write_canMsg(tx_buffer_addr, tx_id, ext, rtrBit, len, byte* buf)
+        # write_canMsg(tx_buffer_addr, tx_id, ext, rtrBit, len, byte * buf)
+        self._write_message(tx_buff, tx_id, extended_id, rtr, message_buffer)
         if not wait_sent:
             return True
         sleep(0.010)
@@ -231,7 +240,7 @@ class MCP2515:
                     "Timeout occoured waiting for transmit confirmation")
             # the status register address is whatever tx_buff_n is, minus one?
             tx_buff_status = self._read_register(tx_buff.CTRL_REG)
-            print("Status of chosen buffer:", tx_buff_status)
+            print("Status of chosen buffer:", hex(tx_buff_status))
             # tx_buffer_status = mcp2515_readRegister(txbuf_n - 1)  # read send buff ctrl reg
             # check for 0x08/0b00001000 being un-set
             # TODO: double check this polarity
@@ -239,8 +248,11 @@ class MCP2515:
 
         return True
 
-    def _write_message(self, tx_buffer, send_id, ext, rtr, messeage_buffer):
-
+    def _write_message(self, tx_buffer, send_id, extended_id, rtr,
+                       message_buffer):
+        if len(message_buffer) > _MAX_CAN_MSG_LEN:
+            raise AttributeError("Message buffer must be <=%d" %
+                                 _MAX_CAN_MSG_LEN)
         load_command = tx_buffer.LOAD_CMD
 
         # add the RTR_MASK bits to len to get DLC, if rtr
@@ -250,22 +262,47 @@ class MCP2515:
 
         # get id buffer segment
 
-        # mcp2515_id_to_buf(ext, id, self._id_buffer)
-        self._load_id_buffer(ext, id, self._id_buffer)
+        self._load_id_buffer(send_id, extended_id)
 
         # this splits up the id header, dlc (len, rtr status), and message buffer
         # TODO: check if we can send in one buffer, in which case `id_buffer` isn't needed
 
-        spi_readwrite(load_command)
-        for (i = 0 i < 4 i++)
-            spi_write(tbufdata[i])
-        }
-        spi_write(dlc)
-        for (i = 0 i < len && i < CAN_MAX_CHAR_IN_MESSAGE i++)
-            spi_write(buf[i])
-        }
+        with self.bus_device_obj as spi:
+            # send write command for the given buffer
+            self._buffer[0] = load_command
+            # spi.write(self._buffer, end=1)
+            spi.write_readinto(self._buffer, #because the reference does similar
+                    self._buffer,
+                    out_start=0,
+                    out_end=1,
+                    in_start=0,
+                    in_end=1)
 
-        mcp2515_start_transmit(buffer_sidh_addr)
+            # send id bytes
+            spi.write(self._id_buffer, end=4)
+
+            # send DLC
+
+            spi.write(bytearray([dlc]))
+            # send message bytes, limit to 8?!
+            spi.write(message_buffer, end=8)
+
+
+        self._start_transmit(tx_buffer)
+
+    def _start_transmit(self, tx_buffer):
+        self._buffer[0] = tx_buffer.SEND_CMD
+        with self.bus_device_obj as spi:
+            spi.write_readinto(
+                self._buffer,  #because the reference does similar
+                self._buffer,
+                out_start=0,
+                out_end=1,
+                in_start=0,
+                in_end=1)
+
+
+
 
     def _load_id_buffer(self, send_id, extended_id=False):
 
@@ -274,36 +311,35 @@ class MCP2515:
             # pack the bottom 18 bits(extended id) into the first four bytes of
             # the buffer:
             # 0: n/a 1: xxxxxxEXID[17:16] 2:EXID[15:8] 3: EXID[7:0]
-            extended_id = send_id & _EXTENDED_ID_MASK # bottom 18 bits
-            pack_into(">I", self._buffer, 0, extended_id)
+            extended_id = send_id & _EXTENDED_ID_MASK  # bottom 18 bits
+            pack_into(">I", self._id_buffer, 0, extended_id)
             # buff[3] = (byte)(canid & 0xFF) # EID[7:0]
             # buff[2] = (byte)(canid >> 8) # EID[15:8]
             # buff[1] = (byte)(canid & 0x03)  # EID[17:16]
 
-
             # need to set top of buffer[1], so get the current value
-            extid_msbits = self._buffer[1]
+            extid_msbits = self._id_buffer[1]
             # get the next 2 bytes of the given ID
-            canid = 0xFFFF & (send_id >> 16) # MSBytes
+            canid = 0xFFFF & (send_id >> 16)  # MSBytes
 
             # standard ID is the remaining 6 bits
             std_id = (canid & 0xFC) >> 2
-            std_id_too = (send_id & 0x00FC0000) >> 16
+            std_id_too = (send_id & 0x00FC0000) >> 18
             print("std_id", std_id, "stid_too_", std_id_too)
-            ms_bytes =  ( std_id<<5 | _TXB_EXIDE_M | extid_msbits)
-            pack_into(">H", self._buffer, 0, ms_bytes)
+            ms_bytes = (std_id << 5 | _TXB_EXIDE_M | extid_msbits)
+            pack_into(">H", self._id_buffer, 0, ms_bytes)
 
             # buff[0] = (byte)(canid >> 5) # top 3 bits of STDID
             # final buff: 0x6F5 0x69 0xCA 0xFE
         else:
-            std_id = (canid & 0xFC) >> 2
+            # TODO: dry with the above
+            std_id = (send_id & 0xFC) >> 2
             pack_into(">H", self._buffer, 0, std_id)
 
             # buff[0] = (byte)(canid >> 3) # top 5 bits to idx 0
             # buff[1] = (byte)((canid & 0x07) << 5) # bottom 3 bits to top of 1
             # buff[3] = 0
             # buff[2] = 0
-
 
     @property
     def _tx_buffers_in_use(self):
