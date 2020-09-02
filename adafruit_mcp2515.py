@@ -98,6 +98,7 @@ _WAKIF = const(0x40)
 # _MERRF = const(0x80)
 
 _TXB_EXIDE_M = const(0x08)
+_TXB_TXREQ_M = const(0x08)  # TX request/completion bit
 
 # CANINTF Register Bits
 
@@ -230,6 +231,7 @@ class MCP2515:
         tx_buff = self._get_tx_buffer()  # info = addr.
 
         # write_canMsg(tx_buffer_addr, tx_id, ext, rtrBit, len, byte * buf)
+        # TODO: set buffer priority
         self._write_message(tx_buff, tx_id, extended_id, rtr, message_buffer)
         if not wait_sent:
             return True
@@ -242,12 +244,10 @@ class MCP2515:
                 raise RuntimeError("Timeout occoured waiting for transmit confirmation")
             # the status register address is whatever tx_buff_n is, minus one?
             tx_buff_status = self._read_register(tx_buff.CTRL_REG)
-            # when CAN_H is disconnected?: 0x18
-            print("Status of chosen buffer:", hex(tx_buff_status))
+
             # tx_buffer_status = mcp2515_readRegister(txbuf_n - 1)  # read send buff ctrl reg
             # check for 0x08/0b00001000 being un-set
-            # TODO: double check this polarity
-            send_confirmed = (tx_buff_status & 0x08) == 0
+            send_confirmed = (tx_buff_status & _TXB_TXREQ_M) == 0
 
         return True
 
@@ -295,7 +295,9 @@ class MCP2515:
 
     # pylint:enable=too-many-arguments
 
+    # TODO: Priority
     def _start_transmit(self, tx_buffer):
+        #
         self._buffer[0] = tx_buffer.SEND_CMD
         with self.bus_device_obj as spi:
             spi.write_readinto(
@@ -307,9 +309,39 @@ class MCP2515:
                 in_end=1,
             )
 
+    @staticmethod
+    def _status_decode(status_byte):
+
+        # when CAN_H is disconnected?: 0x18
+        print("Status of chosen buffer:", hex(status_byte))
+
+        # bit 7 Unimplemented: Read as ‘0’
+        # bit 6 ABTF: Message Aborted Flag bit
+        # 1 = Message was aborted
+        # 0 = Message completed transmission successfully
+        # bit 5 MLOA: Message Lost Arbitration bit
+        # 1 = Message lost arbitration while being sent
+        # 0 = Message did not lose arbitration while being sent
+        # bit 4 TXERR: Transmission Error Detected bit
+        # 1 = A bus error occurred while the message was being transmitted
+        # 0 = No bus error occurred while the message was being transmitted
+        # bit 3 TXREQ: Message Transmit Request bit
+        # 1 = Buffer is currently pending transmission
+        # (MCU sets this bit to request message be transmitted
+        # – bit is automatically cleared when the message is sent)
+        # 0 = Buffer is not currently pending transmission
+        # (MCU can clear this bit to request a message abort)
+        # bit 2 Unimplemented: Read as ‘0’
+        # bit 1-0 TXP[1:0]: Transmit Buffer Priority bits
+        # 11 = Highest message priority
+        # 10 = High intermediate message priority
+        # 01 = Low intermediate message priority
+        # 00 = Lowest message priority
+
     def _load_id_buffer(self, send_id, extended_id=False):
 
         if extended_id:
+            print("extended")
             # set extended id
             # pack the bottom 18 bits(extended id) into the first four bytes of
             # the buffer:
@@ -335,9 +367,12 @@ class MCP2515:
             # buff[0] = (byte)(canid >> 5) # top 3 bits of STDID
             # final buff: 0x6F5 0x69 0xCA 0xFE
         else:
+            print("normal ID")
             # TODO: dry with the above
-            std_id = (send_id & 0xFC) >> 2
-            pack_into(">H", self._buffer, 0, std_id)
+            std_id = send_id & 0b111111  # The actual ID?
+            print("Std: ID", hex(std_id))
+            pack_into(">H", self._id_buffer, 0, std_id << 5)
+            print("id buffer:", self._id_buffer)
 
             # buff[0] = (byte)(canid >> 3) # top 5 bits to idx 0
             # buff[1] = (byte)((canid & 0x07) << 5) # bottom 3 bits to top of 1
