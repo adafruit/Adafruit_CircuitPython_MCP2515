@@ -57,6 +57,9 @@ _SEND_TX1 = const(0x82)
 _SEND_TX2 = const(0x84)
 _SEND_ALL = const(0x87)
 
+_READ_RX0 = const(0x90)
+_READ_RX1 = const(0x94)
+
 # Registers
 
 _CANINTE = const(0x2B)
@@ -111,6 +114,8 @@ _RXB_RX_STDEXT = const(0x00)
 
 _STAT_RXIF_MASK = const(0x03)
 _RTR_MASK = const(0x40)
+
+_STAT_TXIF_MASK = const(0xA8)
 _STAT_TX0_PENDING = const(0x04)
 _STAT_TX1_PENDING = const(0x10)
 _STAT_TX2_PENDING = const(0x40)
@@ -156,6 +161,7 @@ class MCP2515:
         self._id_buffer = bytearray(4)
 
         self._tx_buffers = []
+        self._last_message_id = (None, None)
         self._init_buffers()
         self.initialize()
 
@@ -195,23 +201,10 @@ class MCP2515:
 
         self._set_baud_rate()
 
-        # ************ init canbuffers ***********
-        # void MCP_CAN::mcp2515_initCANBuffers(void):
-        #     byte i, a1, a2, a3
-
-        #     a1 = MCP_TXB0CTRL
-        #     a2 = MCP_TXB1CTRL
-        #     a3 = MCP_TXB2CTRL
         for idx in range(14):
             self._set_register(_TXB0CTRL + idx, 0)
             self._set_register(_TXB1CTRL + idx, 0)
             self._set_register(_TXB2CTRL + idx, 0)
-
-        # above seems to be zeroing from
-        # 0x30-0x3E
-        # 0x40-0x4E
-        # 0x50-0x5E
-        # Pretty sure we can do them all at once, but not just yet.
 
         self._set_register(_RXB0CTRL, 0)
         self._set_register(_RXB1CTRL, 0)
@@ -264,7 +257,6 @@ class MCP2515:
     def unread_message_count(self):
         """The number of messages in the receive buffers"""
         status = self._read_status()
-        print("status:", "{:#010b}".format(status))
 
         message_count = 0
         if status & 0b1:
@@ -273,19 +265,56 @@ class MCP2515:
             message_count += 1
         return message_count
 
+    def _read_rx_buffer(self, read_command, target_buffer):
+
+        with self.bus_device_obj as spi:
+            self._buffer[0] = read_command
+            spi.write_readinto(
+                self._buffer,  # because the reference does similar
+                self._buffer,
+                out_start=0,
+                out_end=1,
+                in_start=0,
+                in_end=1,
+            )
+
+            spi.readinto(self._buffer, end=15)
+        # TODO: be cleaner about this, set RTR flag,
+        # create address obj, message obj
+        raw_idz = unpack_from(">I", self._buffer)[0]
+        is_extended_id = (raw_idz & (1 << 19)) > 0
+        if is_extended_id:
+            sender_id = raw_idz & ((1 << 18) - 1)
+            self._last_message_id = (True, sender_id)
+        else:
+            sender_id = (raw_idz & ((0b1111111111100000) << 16)) >> (16 + 5)
+            self._last_message_id = (False, sender_id)
+        message_length = self._buffer[4]
+        if message_length > 8:
+            message_length = 8
+
+        target_buffer[:] = self._buffer[5 : 5 + message_length]
+
     def read_message_into(self, msg_buffer):
         """Read the next available message into the given `bytearray`
 
         Args:
             msg_buffer (bytearray): The buffer to load the message into
         """
-        return msg_buffer + self._buffer
+        status = self._read_status()
+
+        # TODO: read and store all available messages
+        if status & 0b1:
+            self._read_rx_buffer(_READ_RX0, msg_buffer)
+            return
+        if status & 0b10:
+            self._read_rx_buffer(_READ_RX1, msg_buffer)
 
     # TODO: THISWONTDO
     @property
     def last_send_id(self):
         """The ID of the last read message"""
-        return 0x69
+        return self._last_message_id[1]
 
     # pylint:disable=too-many-arguments
     def _write_message(self, tx_buffer, send_id, extended_id, rtr, message_buffer):
