@@ -131,6 +131,14 @@ def _has_elapsed(start, timeout_ms):
     return (monotonic_ns() - start) / 1000000 > timeout_ms
 
 
+def _split_bin(int_number):
+    bin_str = "{:032b}".format(int_number)
+    bit_width = 32
+    for start_idx in range(bit_width / 4):
+        print(" " + bin_str[start_idx * 4 : (start_idx + 1) * 4], end="")
+    print("")
+
+
 class MCP2515:
     """Library for the MCP2515 CANbus controller
 
@@ -244,7 +252,7 @@ class MCP2515:
                 raise RuntimeError("Timeout occoured waiting for transmit confirmation")
             # the status register address is whatever tx_buff_n is, minus one?
             tx_buff_status = self._read_register(tx_buff.CTRL_REG)
-
+            self._status_decode(tx_buff_status)
             # tx_buffer_status = mcp2515_readRegister(txbuf_n - 1)  # read send buff ctrl reg
             # check for 0x08/0b00001000 being un-set
             send_confirmed = (tx_buff_status & _TXB_TXREQ_M) == 0
@@ -311,10 +319,20 @@ class MCP2515:
 
     @staticmethod
     def _status_decode(status_byte):
-
+        out_str = "Status: "
         # when CAN_H is disconnected?: 0x18
         print("Status of chosen buffer:", hex(status_byte))
-
+        if status_byte & 0x40:
+            out_str += " Message ABORTED"
+        if status_byte & 0x20:
+            out_str += " Message LOST ARBITRATION"
+        if status_byte & 0x10:
+            out_str += " TRANSMIT ERROR"
+        if status_byte & 0x8:
+            out_str += " Transmit Requested"
+        else:
+            out_str += " Message sent"
+        out_str += " Priority: " + ["LAST", "LOW", "MEDIUM", "HIGH"][status_byte & 0x3]
         # bit 7 Unimplemented: Read as ‘0’
         # bit 6 ABTF: Message Aborted Flag bit
         # 1 = Message was aborted
@@ -337,47 +355,44 @@ class MCP2515:
         # 10 = High intermediate message priority
         # 01 = Low intermediate message priority
         # 00 = Lowest message priority
+        print(out_str)
 
     def _load_id_buffer(self, send_id, extended_id=False):
-
+        print("")
+        print("Send_id(input):")
+        _split_bin(send_id)
         if extended_id:
-            print("extended")
-            # set extended id
-            # pack the bottom 18 bits(extended id) into the first four bytes of
-            # the buffer:
-            # 0: n/a 1: xxxxxxEXID[17:16] 2:EXID[15:8] 3: EXID[7:0]
+
             extended_id = send_id & _EXTENDED_ID_MASK  # bottom 18 bits
+            print("\tExtended ID:", "0x{:04X}".format(extended_id))
             pack_into(">I", self._id_buffer, 0, extended_id)
-            # buff[3] = (byte)(canid & 0xFF) # EID[7:0]
-            # buff[2] = (byte)(canid >> 8) # EID[15:8]
-            # buff[1] = (byte)(canid & 0x03)  # EID[17:16]
+
+            id_buff_int = unpack_from(">I", self._id_buffer)[0]
+            _split_bin(id_buff_int)
 
             # need to set top of buffer[1], so get the current value
             extid_msbits = self._id_buffer[1]
             # get the next 2 bytes of the given ID
-            canid = 0xFFFF & (send_id >> 16)  # MSBytes
 
-            # standard ID is the remaining 6 bits
-            std_id = (canid & 0xFC) >> 2
-            std_id_too = (send_id & 0x00FC0000) >> 18
-            print("std_id", std_id, "stid_too_", std_id_too)
+            std_id = (send_id & 0x00FC0000) >> 18
+
+            print("\tStd: ID", std_id)
             ms_bytes = std_id << 5 | _TXB_EXIDE_M | extid_msbits
             pack_into(">H", self._id_buffer, 0, ms_bytes)
 
-            # buff[0] = (byte)(canid >> 5) # top 3 bits of STDID
-            # final buff: 0x6F5 0x69 0xCA 0xFE
+            id_buff_int = unpack_from(">I", self._id_buffer)[0]
+            _split_bin(id_buff_int)
+
         else:
             print("normal ID")
             # TODO: dry with the above
-            std_id = send_id & 0b111111  # The actual ID?
-            print("Std: ID", hex(std_id))
+            std_id = send_id & 0x3FF  # The actual ID?
+            print("\tStd: ID", hex(std_id))
             pack_into(">H", self._id_buffer, 0, std_id << 5)
-            print("id buffer:", self._id_buffer)
+            print("\tID Buffer:", self._id_buffer)
 
-            # buff[0] = (byte)(canid >> 3) # top 5 bits to idx 0
-            # buff[1] = (byte)((canid & 0x07) << 5) # bottom 3 bits to top of 1
-            # buff[3] = 0
-            # buff[2] = 0
+        id_buff_int = unpack_from(">I", self._id_buffer)[0]
+        _split_bin(id_buff_int)
 
     @property
     def _tx_buffers_in_use(self):
@@ -403,10 +418,7 @@ class MCP2515:
             print("none available!")
             return None
         buffer_index = txs_busy.index(False)  # => self._tx_buffers
-        print("Available buffer at index", buffer_index)
         tx_buffer = self._tx_buffers[buffer_index]
-
-        print("Available buffer:", tx_buffer)
 
         self._mod_register(_CANINTF, tx_buffer.INT_FLAG_MASK, 0)
         return tx_buffer
