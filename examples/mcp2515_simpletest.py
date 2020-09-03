@@ -14,7 +14,6 @@ cs.direction = digitalio.Direction.OUTPUT
 # spi = board.SPI()
 spi = busio.SPI(board.SCK, board.MOSI, board.MISO)
 mcp = adafruit_mcp2515.MCP2515(spi, cs)
-print("out of Init code!")
 # mcp.send_buffer(tx_id=0x00, ext=0, rtrBit=0, len=8, buf=stmp, wait_sent=true)
 max_ext_id = 0x3FFFF
 mb1 = [0xDE, 0xAD, 0xBE, 0xEF]

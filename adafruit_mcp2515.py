@@ -109,6 +109,7 @@ _RXB_RX_MASK = const(0x60)
 _RXB_BUKT_MASK = const((1 << 2))
 _RXB_RX_STDEXT = const(0x00)
 
+_STAT_RXIF_MASK = const(0x03)
 _RTR_MASK = const(0x40)
 _STAT_TX0_PENDING = const(0x04)
 _STAT_TX1_PENDING = const(0x10)
@@ -252,12 +253,39 @@ class MCP2515:
                 raise RuntimeError("Timeout occoured waiting for transmit confirmation")
             # the status register address is whatever tx_buff_n is, minus one?
             tx_buff_status = self._read_register(tx_buff.CTRL_REG)
-            self._status_decode(tx_buff_status)
+            self._tx_buffer_status_decode(tx_buff_status)
             # tx_buffer_status = mcp2515_readRegister(txbuf_n - 1)  # read send buff ctrl reg
             # check for 0x08/0b00001000 being un-set
             send_confirmed = (tx_buff_status & _TXB_TXREQ_M) == 0
 
         return True
+
+    @property
+    def unread_message_count(self):
+        """The number of messages in the receive buffers"""
+        status = self._read_status()
+        print("status:", "{:#010b}".format(status))
+
+        message_count = 0
+        if status & 0b1:
+            message_count += 1
+        if status & 0b10:
+            message_count += 1
+        return message_count
+
+    def read_message_into(self, msg_buffer):
+        """Read the next available message into the given `bytearray`
+
+        Args:
+            msg_buffer (bytearray): The buffer to load the message into
+        """
+        return msg_buffer + self._buffer
+
+    # TODO: THISWONTDO
+    @property
+    def last_send_id(self):
+        """The ID of the last read message"""
+        return 0x69
 
     # pylint:disable=too-many-arguments
     def _write_message(self, tx_buffer, send_id, extended_id, rtr, message_buffer):
@@ -318,7 +346,7 @@ class MCP2515:
             )
 
     @staticmethod
-    def _status_decode(status_byte):
+    def _tx_buffer_status_decode(status_byte):
         out_str = "Status: "
         # when CAN_H is disconnected?: 0x18
         print("Status of chosen buffer:", hex(status_byte))
@@ -333,28 +361,7 @@ class MCP2515:
         else:
             out_str += " Message sent"
         out_str += " Priority: " + ["LAST", "LOW", "MEDIUM", "HIGH"][status_byte & 0x3]
-        # bit 7 Unimplemented: Read as ‘0’
-        # bit 6 ABTF: Message Aborted Flag bit
-        # 1 = Message was aborted
-        # 0 = Message completed transmission successfully
-        # bit 5 MLOA: Message Lost Arbitration bit
-        # 1 = Message lost arbitration while being sent
-        # 0 = Message did not lose arbitration while being sent
-        # bit 4 TXERR: Transmission Error Detected bit
-        # 1 = A bus error occurred while the message was being transmitted
-        # 0 = No bus error occurred while the message was being transmitted
-        # bit 3 TXREQ: Message Transmit Request bit
-        # 1 = Buffer is currently pending transmission
-        # (MCU sets this bit to request message be transmitted
-        # – bit is automatically cleared when the message is sent)
-        # 0 = Buffer is not currently pending transmission
-        # (MCU can clear this bit to request a message abort)
-        # bit 2 Unimplemented: Read as ‘0’
-        # bit 1-0 TXP[1:0]: Transmit Buffer Priority bits
-        # 11 = Highest message priority
-        # 10 = High intermediate message priority
-        # 01 = Low intermediate message priority
-        # 00 = Lowest message priority
+
         print(out_str)
 
     def _load_id_buffer(self, send_id, extended_id=False):
@@ -408,7 +415,6 @@ class MCP2515:
             bool(status & _STAT_TX2_PENDING),
         )
 
-    #
     def _get_tx_buffer(self):
         """Get the address of the next available tx buffer and unset
         its interrupt bit in _CANINTF"""
@@ -447,7 +453,6 @@ class MCP2515:
         current_mode = stat_reg & _MODE_MASK
 
         if current_mode == mode:
-            print("mode already set")
             return True
         return self._request_new_mode(mode)
 
