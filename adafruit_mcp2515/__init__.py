@@ -30,6 +30,7 @@ from struct import unpack_from, pack_into  # pylint:disable=unused-import
 from time import sleep, monotonic, monotonic_ns  # pylint:disable=unused-import
 from micropython import const
 import adafruit_bus_device.spi_device as spi_device
+from .canio import Message, CANMessage, CANIdentifier
 
 __version__ = "0.0.0-auto.0"
 __repo__ = "https://github.com/adafruit/Adafruit_CircuitPython_MCP2515.git"
@@ -125,13 +126,18 @@ _STAT_TX_PENDING_MASK = const(_STAT_TX0_PENDING | _STAT_TX1_PENDING | _STAT_TX2_
 _EXTENDED_ID_MASK = (1 << 18) - 1  # bottom 18 bits
 _SEND_TIMEOUT_MS = const(5)  # 500ms
 _MAX_CAN_MSG_LEN = 8  # ?!
-
+_MESSAGE_QUEUE_LEN = 16
 # perhaps this will be stateful later?
 TransmitBuffer = namedtuple(
     "TransmitBuffer",
     ["CTRL_REG", "STD_ID_REG", "INT_FLAG_MASK", "LOAD_CMD", "SEND_CMD"],
 )
 
+# perhaps this will be stateful later? #TODO : dedup with above
+ReceiveBuffer = namedtuple(
+    "TransmitBuffer",
+    ["CTRL_REG", "STD_ID_REG", "INT_FLAG_MASK", "LOAD_CMD", "SEND_CMD"],
+)
 
 def _has_elapsed(start, timeout_ms):
     return (monotonic_ns() - start) / 1000000 > timeout_ms
@@ -159,7 +165,10 @@ class MCP2515:
         self.bus_device_obj = spi_device.SPIDevice(spi_bus, cs_pin)
         self._buffer = bytearray(255)
         self._id_buffer = bytearray(4)
-
+        self._next_message_index = 0
+        self._next_unread_message = -1
+        self._unread_message_count = 0
+        self._message_queue = []
         self._tx_buffers = []
         self._last_message_id = (None, None)
         self._init_buffers()
@@ -190,6 +199,8 @@ class MCP2515:
                 SEND_CMD=_SEND_TX2,
             ),
         ]
+        for _i in range(_MESSAGE_QUEUE_LEN):
+            self._message_queue.append(CANMessage())
 
     def initialize(self):
         """Return the sensor to the default configuration"""
@@ -222,9 +233,20 @@ class MCP2515:
         self._set_mode(_MODE_NORMAL)
         return res
 
+    def write(self, message):
+        """Send a `canio.Message`
+
+        Args:
+            message (canio.Message): The message to send. Must be a valid `canio.Message`
+        """
+        self.send_buffer(
+            message.data, message.id, extended_id=message.extended, rtr=message.rtr
+        )
+
     def send_buffer(
         self, message_buffer, tx_id, extended_id=False, rtr=False, wait_sent=True
     ):  # pylint:disable=too-many-arguments
+
         """send a message buffer"""
         # send example call:
         # CAN.sendMsgBuf(tx_id=0x00, ext=0, rtrBit=0, len=8, buf=stmp, wait_sent=true)
@@ -253,19 +275,48 @@ class MCP2515:
 
         return True
 
+    # @property
+    # def unread_next_message_index(self):
+    #     """The number of messages in the receive buffers"""
+    #     status = self._read_status()
+
+    #     message_count = 0
+    #     if status & 0b1:
+    #         message_count += 1
+    #     if status & 0b10:
+    #         message_count += 1
+    #     return message_count
+
     @property
     def unread_message_count(self):
-        """The number of messages in the receive buffers"""
-        status = self._read_status()
+        """The number of messages that have been received but not read with `read_message`
 
-        message_count = 0
-        if status & 0b1:
-            message_count += 1
-        if status & 0b10:
-            message_count += 1
-        return message_count
+        Returns:
+            int: The unread message count
+        """
+        self._read_from_rx_buffers()
+        print(
+            "_next_unread:",
+            self._next_unread_message,
+            "_next_index:",
+            self._next_message_index,
+        )
+        return self._unread_message_count
 
-    def _read_rx_buffer(self, read_command, target_buffer):
+    def read_message(self):
+        """Read the next available message
+
+        Returns:
+            `canio.Message`: The next available message or None if one is not available
+        """
+        if self.unread_message_count == 0:
+            return None
+        next_unread = self._message_queue[self._next_unread_message]
+        self._unread_message_count -= 1
+        self._next_unread_message += 1
+        return next_unread
+
+    def _read_rx_buffer(self, read_command):
 
         with self.bus_device_obj as spi:
             self._buffer[0] = read_command
@@ -292,10 +343,16 @@ class MCP2515:
         message_length = self._buffer[4]
         if message_length > 8:
             message_length = 8
+        next_message = self._message_queue[self._next_message_index]
+        next_message.bytes[:] = self._buffer[5 : 5 + message_length]
+        next_message.can_id.id = sender_id
+        next_message.can_id.is_extended = is_extended_id
 
-        target_buffer[:] = self._buffer[5 : 5 + message_length]
+        self._next_message_index = (self._next_message_index + 1) % _MESSAGE_QUEUE_LEN
+        self._next_unread_message = (self._next_unread_message + 1) % _MESSAGE_QUEUE_LEN
+        self._unread_message_count += 1
 
-    def read_message_into(self, msg_buffer):
+    def _read_from_rx_buffers(self):
         """Read the next available message into the given `bytearray`
 
         Args:
@@ -305,10 +362,10 @@ class MCP2515:
 
         # TODO: read and store all available messages
         if status & 0b1:
-            self._read_rx_buffer(_READ_RX0, msg_buffer)
-            return
+            self._read_rx_buffer(_READ_RX0)
+
         if status & 0b10:
-            self._read_rx_buffer(_READ_RX1, msg_buffer)
+            self._read_rx_buffer(_READ_RX1)
 
     # TODO: THISWONTDO
     @property
@@ -394,8 +451,6 @@ class MCP2515:
         print(out_str)
 
     def _load_id_buffer(self, send_id, extended_id=False):
-        print("")
-        print("Send_id(input):")
         _split_bin(send_id)
         if extended_id:
 

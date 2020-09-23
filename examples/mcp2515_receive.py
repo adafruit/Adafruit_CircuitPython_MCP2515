@@ -22,9 +22,10 @@ msg_buffer = bytearray(8)
 # unsigned long canId = CAN.getCanId()
 while True:
     msg_count = mcp.unread_message_count
+    print(msg_count, "messages available")
     if msg_count > 0:
         print(msg_count, "messages available")
-        mcp.read_message_into(msg_buffer)
+        msg = mcp.read_message()
         send_id = mcp.last_send_id
         print("Message received from ", hex(send_id))
         message_str = "::".join(["0x{:02X}".format(i) for i in msg_buffer])
