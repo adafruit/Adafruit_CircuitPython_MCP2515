@@ -306,7 +306,6 @@ class MCP2515:
             )
 
             spi.readinto(self._buffer, end=15)
-        # TODO: set RTR flag,
 
         raw_idz = unpack_from(">I", self._buffer)[0]
         is_extended_id = (raw_idz & (1 << 19)) > 0
@@ -314,13 +313,20 @@ class MCP2515:
             sender_id = raw_idz & ((1 << 18) - 1)
         else:
             sender_id = (raw_idz & ((0b1111111111100000) << 16)) >> (16 + 5)
-        message_length = self._buffer[4]
+
+        dlc = self._buffer[4]
+        print("DLC:", "{:#010b}".format(dlc))
+
+        rtr = (dlc & _RTR_MASK) > 0
+        message_length = dlc & 0xF
+        print("Masked msg length:", message_length)
         if message_length > 8:
             message_length = 8
         message = Message(
             sender_id,
             data=bytes(self._buffer[5 : 5 + message_length]),
             extended=is_extended_id,
+            rtr=rtr,
         )
 
         self._unread_message_queue.append(message)
@@ -349,6 +355,7 @@ class MCP2515:
         # add the RTR_MASK bits to len to get DLC, if rtr
         dlc = len(message_buffer)
         if rtr:
+            print("setting RTR flag")
             dlc |= _RTR_MASK
 
         # get id buffer segment
@@ -377,7 +384,8 @@ class MCP2515:
             # send DLC
 
             spi.write(bytearray([dlc]))
-            # send message bytes, limit to 8?!
+            print("DLC:", "{:#010b}".format(dlc))
+            # send message bytes, limit to 8?
             spi.write(message_buffer, end=8)
 
         self._start_transmit(tx_buffer)
