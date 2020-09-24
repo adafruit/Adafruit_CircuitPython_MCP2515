@@ -29,8 +29,8 @@ mb1 = [0xDE, 0xAD, 0xBE, 0xEF]
 mb2 = [0xCA, 0xFE, 0xFA, 0xDE]
 can_id = 0b100000000000000001
 while True:
-    mb1.insert(0, mb2.pop(-1))
-    mb2.insert(0, mb1.pop(-1))
+    mb1.insert(0, mb2.pop())
+    mb2.insert(0, mb1.pop())
     message = Message(id=0xFFAA, data=bytes(mb1 + mb2), extended=True)
     mcp.write(message)
     sleep(0.3)

@@ -125,7 +125,6 @@ _STAT_TX_PENDING_MASK = const(_STAT_TX0_PENDING | _STAT_TX1_PENDING | _STAT_TX2_
 _EXTENDED_ID_MASK = (1 << 18) - 1  # bottom 18 bits
 _SEND_TIMEOUT_MS = const(5)  # 500ms
 _MAX_CAN_MSG_LEN = 8  # ?!
-_MESSAGE_QUEUE_LEN = 16
 # perhaps this will be stateful later?
 TransmitBuffer = namedtuple(
     "TransmitBuffer",
@@ -165,12 +164,8 @@ class MCP2515:
         self.bus_device_obj = spi_device.SPIDevice(spi_bus, cs_pin)
         self._buffer = bytearray(255)
         self._id_buffer = bytearray(4)
-        self._next_message_index = 0
-        self._next_unread_message = -1
-        self._unread_message_count = 0
-        self._message_queue = []
+        self._unread_message_queue = []
         self._tx_buffers = []
-        self._last_message_id = (None, None)
         self._init_buffers()
         self.initialize()
 
@@ -199,8 +194,6 @@ class MCP2515:
                 SEND_CMD=_SEND_TX2,
             ),
         ]
-        for _i in range(_MESSAGE_QUEUE_LEN):
-            self._message_queue.append(Message(0xFF, data=bytes()))
 
     def initialize(self):
         """Return the sensor to the default configuration"""
@@ -250,7 +243,6 @@ class MCP2515:
     def send_buffer(
         self, message_buffer, tx_id, extended_id=False, rtr=False, wait_sent=True
     ):  # pylint:disable=too-many-arguments
-
         """send a message buffer"""
         # send example call:
         # CAN.sendMsgBuf(tx_id=0x00, ext=0, rtrBit=0, len=8, buf=stmp, wait_sent=true)
@@ -279,18 +271,6 @@ class MCP2515:
 
         return True
 
-    # @property
-    # def unread_next_message_index(self):
-    #     """The number of messages in the receive buffers"""
-    #     status = self._read_status()
-
-    #     message_count = 0
-    #     if status & 0b1:
-    #         message_count += 1
-    #     if status & 0b10:
-    #         message_count += 1
-    #     return message_count
-
     @property
     def unread_message_count(self):
         """The number of messages that have been received but not read with `read_message`
@@ -299,13 +279,8 @@ class MCP2515:
             int: The unread message count
         """
         self._read_from_rx_buffers()
-        # print(
-        #     "_next_unread:",
-        #     self._next_unread_message,
-        #     "_next_index:",
-        #     self._next_message_index,
-        # )
-        return self._unread_message_count
+
+        return len(self._unread_message_queue)
 
     def read_message(self):
         """Read the next available message
@@ -315,13 +290,10 @@ class MCP2515:
         """
         if self.unread_message_count == 0:
             return None
-        next_unread = self._message_queue[self._next_unread_message]
-        self._unread_message_count -= 1
-        self._next_unread_message += 1
-        return next_unread
+
+        return self._unread_message_queue.pop(0)
 
     def _read_rx_buffer(self, read_command):
-
         with self.bus_device_obj as spi:
             self._buffer[0] = read_command
             spi.write_readinto(
@@ -334,27 +306,24 @@ class MCP2515:
             )
 
             spi.readinto(self._buffer, end=15)
-        # TODO: be cleaner about this, set RTR flag,
-        # create address obj, message obj
+        # TODO: set RTR flag,
+
         raw_idz = unpack_from(">I", self._buffer)[0]
         is_extended_id = (raw_idz & (1 << 19)) > 0
         if is_extended_id:
             sender_id = raw_idz & ((1 << 18) - 1)
-            self._last_message_id = (True, sender_id)
         else:
             sender_id = (raw_idz & ((0b1111111111100000) << 16)) >> (16 + 5)
-            self._last_message_id = (False, sender_id)
         message_length = self._buffer[4]
         if message_length > 8:
             message_length = 8
-        next_message = self._message_queue[self._next_message_index]
-        next_message.data[:] = self._buffer[5 : 5 + message_length]
-        next_message.id = sender_id
-        next_message.extended = is_extended_id
+        message = Message(
+            sender_id,
+            data=bytes(self._buffer[5 : 5 + message_length]),
+            extended=is_extended_id,
+        )
 
-        self._next_message_index = (self._next_message_index + 1) % _MESSAGE_QUEUE_LEN
-        self._next_unread_message = (self._next_unread_message + 1) % _MESSAGE_QUEUE_LEN
-        self._unread_message_count += 1
+        self._unread_message_queue.append(message)
 
     def _read_from_rx_buffers(self):
         """Read the next available message into the given `bytearray`
@@ -370,12 +339,6 @@ class MCP2515:
 
         if status & 0b10:
             self._read_rx_buffer(_READ_RX1)
-
-    # TODO: THISWONTDO
-    @property
-    def last_send_id(self):
-        """The ID of the last read message"""
-        return self._last_message_id[1]
 
     # pylint:disable=too-many-arguments
     def _write_message(self, tx_buffer, send_id, extended_id, rtr, message_buffer):
