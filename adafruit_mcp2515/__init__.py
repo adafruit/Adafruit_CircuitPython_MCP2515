@@ -200,7 +200,7 @@ class MCP2515:
             ),
         ]
         for _i in range(_MESSAGE_QUEUE_LEN):
-            self._message_queue.append(CANMessage())
+            self._message_queue.append(Message(0xFF, data=bytes()))
 
     def initialize(self):
         """Return the sensor to the default configuration"""
@@ -344,9 +344,9 @@ class MCP2515:
         if message_length > 8:
             message_length = 8
         next_message = self._message_queue[self._next_message_index]
-        next_message.bytes[:] = self._buffer[5 : 5 + message_length]
-        next_message.can_id.id = sender_id
-        next_message.can_id.is_extended = is_extended_id
+        next_message.data[:] = self._buffer[5 : 5 + message_length]
+        next_message.id = sender_id
+        next_message.extended = is_extended_id
 
         self._next_message_index = (self._next_message_index + 1) % _MESSAGE_QUEUE_LEN
         self._next_unread_message = (self._next_unread_message + 1) % _MESSAGE_QUEUE_LEN
