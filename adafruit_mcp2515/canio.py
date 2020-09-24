@@ -175,9 +175,11 @@ class Listener:
         canio.CAN object.
     """
 
-    def __init__(self, bus_obj):
+    def __init__(self, bus_obj, timeout=1.0):
         self._timer = Timer()
         self._bus_obj = bus_obj
+        self._read_timeout = None
+        self.timeout = timeout
 
     @property
     def timeout(self):
@@ -221,9 +223,11 @@ class Listener:
 
     def in_waiting(self):
         """Returns the number of messages waiting"""
+        return self._bus_obj.unread_message_count
 
     def __iter__(self):
         """Returns self, unless the object is deinitialized"""
+        return self
 
     def __next__(self):
         """Reads a message, after waiting up to self.timeout seconds"""
@@ -242,20 +246,3 @@ class Listener:
     def __exit__(self, unused1, unused2, unused3):
         """Calls deinit()"""
         self.deinit()
-
-
-class CANIdentifier:
-    """A class representing the ID of a `canio` message"""
-
-    def __init__(self):
-        self.id = None  # pylint:disable=invalid-name
-        self.is_extended = False
-
-
-class CANMessage:
-    """A class representing a CAN bus message"""
-
-    def __init__(self):
-        self.bytes = bytearray(8)
-        self.rtr = False
-        self.can_id = CANIdentifier()

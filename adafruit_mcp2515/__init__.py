@@ -29,7 +29,7 @@ from struct import unpack_from, pack_into  # pylint:disable=unused-import
 from time import sleep, monotonic, monotonic_ns  # pylint:disable=unused-import
 from micropython import const
 import adafruit_bus_device.spi_device as spi_device
-from .canio import Message, CANMessage, CANIdentifier
+from .canio import Message, Listener
 
 __version__ = "0.0.0-auto.0"
 __repo__ = "https://github.com/adafruit/Adafruit_CircuitPython_MCP2515.git"
@@ -243,6 +243,10 @@ class MCP2515:
             message.data, message.id, extended_id=message.extended, rtr=message.rtr
         )
 
+    def listen(self, timeout=0):
+        """Return a `canio.Listener` to iterate through available messages"""
+        return Listener(self, timeout)
+
     def send_buffer(
         self, message_buffer, tx_id, extended_id=False, rtr=False, wait_sent=True
     ):  # pylint:disable=too-many-arguments
@@ -295,12 +299,12 @@ class MCP2515:
             int: The unread message count
         """
         self._read_from_rx_buffers()
-        print(
-            "_next_unread:",
-            self._next_unread_message,
-            "_next_index:",
-            self._next_message_index,
-        )
+        # print(
+        #     "_next_unread:",
+        #     self._next_unread_message,
+        #     "_next_index:",
+        #     self._next_message_index,
+        # )
         return self._unread_message_count
 
     def read_message(self):
