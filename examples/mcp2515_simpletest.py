@@ -31,7 +31,7 @@ can_id = 0b100000000000000001
 while True:
     mb1.insert(0, mb2.pop(-1))
     mb2.insert(0, mb1.pop(-1))
-    message = Message(id=0xFFAA, data=bytearray(mb1 + mb2), extended=True)
+    message = Message(id=0xFFAA, data=bytes(mb1 + mb2), extended=True)
     mcp.write(message)
     sleep(0.3)
     print("*" * 40)

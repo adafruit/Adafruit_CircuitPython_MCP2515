@@ -1,4 +1,3 @@
-# SPDX-FileCopyrightText: 2017 Scott Shawcroft, written for Adafruit Industries
 # SPDX-FileCopyrightText: Copyright (c) 2020 Bryan Siepert for Adafruit Industries
 #
 # SPDX-License-Identifier: MIT
@@ -138,6 +137,7 @@ ReceiveBuffer = namedtuple(
     "TransmitBuffer",
     ["CTRL_REG", "STD_ID_REG", "INT_FLAG_MASK", "LOAD_CMD", "SEND_CMD"],
 )
+
 
 def _has_elapsed(start, timeout_ms):
     return (monotonic_ns() - start) / 1000000 > timeout_ms
