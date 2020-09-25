@@ -74,6 +74,11 @@ class Message:
         self._rtr = is_rtr
 
 
+class RemoteTransmissionRequest:
+    """RRTTTTRRRR
+    """
+
+
 class Listener:
     """Listens for a CAN message
 
@@ -97,35 +102,15 @@ class Listener:
     def timeout(self, timeout):
         self._read_timeout = float(timeout)
 
-    def read(self):
-        """Reads a message. If after waiting up to self.timeout seconds if no message is received,\
-            None is returned. Otherwise, a Message is returned."""
+    def receive(self):
+        """Receives a message. If after waiting up to self.timeout seconds if no message is\
+        received, None is returned. Otherwise, a Message is returned."""
         self._timer.rewind_to(self._read_timeout)
         while not self._timer.expired:
             if self._bus_obj.unread_message_count == 0:
                 continue
             return self._bus_obj.read_message()
         return None
-
-    def readinto(self, message):
-        """Reads the next available message into the given `Message` instance.
-
-        Args:
-            message (Message): The message object to fill with received message
-
-        Returns:
-            bool: True if a message was received within `timeout` seconds.
-            bool: False if no message was received within the timeout
-        """
-        next_message = self.read()
-        if next_message is None:
-            return False
-        message.id = next_message.id
-        message.extended = next_message.extended
-        message.data = next_message.data
-        message.rtr = next_message.rtr
-
-        return True
 
     def in_waiting(self):
         """Returns the number of messages waiting"""
@@ -136,8 +121,8 @@ class Listener:
         return self
 
     def __next__(self):
-        """Reads a message, after waiting up to self.timeout seconds"""
-        return self.read()
+        """Receives a message, after waiting up to self.timeout seconds"""
+        return self.receive()
 
     def deinit(self):
         """Deinitialize this object, freeing its hardware resources"""
@@ -150,6 +135,37 @@ class Listener:
     def __exit__(self, unused1, unused2, unused3):
         """Calls deinit()"""
         self.deinit()
+
+
+# class BusState:
+
+# The state of the CAN bus
+
+# ERROR_ACTIVE:object
+# The bus is in the normal (active) state
+
+# ERROR_WARNING:object
+# The bus is in the normal (active) state, but a moderate number of errors have occurred recently.
+
+# NOTE: Not all implementations may use ERROR_WARNING. Do not rely on seeing ERROR_WARNING before\
+#  ERROR_PASSIVE.
+
+# ERROR_PASSIVE:object
+# The bus is in the passive state due to the number of errors that have occurred recently.
+
+# This device will acknowledge packets it receives, but cannot transmit messages. If additional\
+# errors occur, this device may progress to BUS_OFF. If it successfully acknowledges other packets\
+# on the bus, it can return to ERROR_WARNING or ERROR_ACTIVE and transmit packets.
+
+# BUS_OFF:object
+# The bus has turned off due to the number of errors that have occurred recently. It must be \
+# restarted before it will send or receive packets. This device will neither send or acknowledge \
+# packets on the bus.
+
+
+class Match:
+    """MATCHA
+    """
 
 
 ############# non-api classes and methods

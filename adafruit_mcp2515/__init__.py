@@ -29,16 +29,16 @@ from struct import unpack_from, pack_into  # pylint:disable=unused-import
 from time import sleep, monotonic, monotonic_ns  # pylint:disable=unused-import
 from micropython import const
 import adafruit_bus_device.spi_device as spi_device
-from .canio import Message, Listener
+from .canio import Message, Listener, Match
 
 __version__ = "0.0.0-auto.0"
 __repo__ = "https://github.com/adafruit/Adafruit_CircuitPython_MCP2515.git"
 
 # modes
 _MODE_NORMAL = const(0x00)
-# _MODE_SLEEP = const(0x20)
-# _MODE_LOOPBACK = const(0x40)
-# _MODE_LISTENONLY = const(0x60)
+_MODE_SLEEP = const(0x20)
+_MODE_LOOPBACK = const(0x40)
+_MODE_LISTENONLY = const(0x60)
 _MODE_CONFIG = const(0x80)
 
 # commands
@@ -159,15 +159,47 @@ class MCP2515:
         debug (bool, optional): Enables print statements used for debugging. Defaults to False.
     """
 
-    def __init__(self, spi_bus, cs_pin, debug=False):
+    def __init__(
+        self,
+        spi_bus,
+        cs_pin,
+        *,
+        baudrate: int = 250000,
+        loopback: bool = False,
+        silent: bool = False,
+        auto_restart: bool = False,
+        debug: bool = False
+    ):
+        """[summary]
+
+        Args:
+            spi_bus (busio.SPI): The SPI bus used to communicate with the MCP2515
+            cs_pin (digitalio.DigitalInOut): SPI bus enable pin
+            baudrate (int, optional):  The bit rate of the bus in Hz. All devices on the bus must \
+                agree on this value. Defaults to 250000.
+            loopback (bool, optional): When True the rx pin’s value is ignored, and the device \
+                receives the packets it sends. Defaults to False.
+            silent (bool, optional): When True the tx pin is always driven to the high logic level.\
+                 This mode can be used to “sniff” a CAN bus without interfering.. Defaults to False.
+            auto_restart (bool, optional): If True, will restart communications after entering \
+                bus-off state. Defaults to False.
+            debug (bool, optional): If True, will enable printing debug information. Defaults to \
+                False.
+        """
+        if loopback and silent:
+            raise AttributeError("only loopback or silent mode can bet set, not both")
+        self._auto_restart = auto_restart
         self._debug = debug
         self.bus_device_obj = spi_device.SPIDevice(spi_bus, cs_pin)
+        self._cs_pin = cs_pin
         self._buffer = bytearray(255)
         self._id_buffer = bytearray(4)
         self._unread_message_queue = []
         self._tx_buffers = []
+        self._mode = None
+
         self._init_buffers()
-        self.initialize()
+        self.initialize(baudrate, loopback=loopback, silent=silent)
 
     def _init_buffers(self):
 
@@ -195,16 +227,19 @@ class MCP2515:
             ),
         ]
 
-    def initialize(self):
+    def initialize(self, baudrate, loopback=False, silent=False):
         """Return the sensor to the default configuration"""
 
         self._reset()
         # our mode set skips checking for sleep
         res = self._set_mode(_MODE_CONFIG)
+        if not res:
+            raise RuntimeError("Unable to set config mode")
         # SET MODE (FAILABLE)
 
-        self._set_baud_rate()
+        self._set_baud_rate(baudrate)
 
+        # intialize TX and RX registers
         for idx in range(14):
             self._set_register(_TXB0CTRL + idx, 0)
             self._set_register(_TXB1CTRL + idx, 0)
@@ -214,7 +249,7 @@ class MCP2515:
         self._set_register(_RXB1CTRL, 0)
 
         # # # interrupt mode
-
+        # TODO: WHAT IS THIS
         self._set_register(_CANINTE, _RX0IF | _RX1IF)
         sleep(0.010)
         self._mod_register(
@@ -222,23 +257,17 @@ class MCP2515:
         )
 
         self._mod_register(_RXB1CTRL, _RXB_RX_MASK, _RXB_RX_STDEXT)
+        if loopback:
+            new_mode = _MODE_LOOPBACK
+        elif silent:
+            new_mode = _MODE_LISTENONLY
+        else:
+            new_mode = _MODE_NORMAL
 
-        self._set_mode(_MODE_NORMAL)
+        res = self._set_mode(new_mode)
+        if not res:
+            raise RuntimeError("Unable to set mode")
         return res
-
-    def write(self, message):
-        """Send a `canio.Message`
-
-        Args:
-            message (canio.Message): The message to send. Must be a valid `canio.Message`
-        """
-        self.send_buffer(
-            message.data, message.id, extended_id=message.extended, rtr=message.rtr
-        )
-
-    def listen(self, timeout=0):
-        """Return a `canio.Listener` to iterate through available messages"""
-        return Listener(self, timeout)
 
     def send_buffer(
         self, message_buffer, tx_id, extended_id=False, rtr=False, wait_sent=True
@@ -488,9 +517,10 @@ class MCP2515:
         self._mod_register(_CANINTF, tx_buffer.INT_FLAG_MASK, 0)
         return tx_buffer
 
-    def _set_baud_rate(self):
+    def _set_baud_rate(self, baudrate=500000):
 
         # *******8 set baud rate ***********
+        print("baud rate:", baudrate)
         # if (mcp2515_configRate(canSpeed, clock)):
         # mcp2515_setRegister(MCP_CNF1, 0x00)
         # mcp2515_setRegister(MCP_CNF2, 0xF0)
@@ -513,7 +543,10 @@ class MCP2515:
 
         if current_mode == mode:
             return True
-        return self._request_new_mode(mode)
+        new_mode_set = self._request_new_mode(mode)
+        if new_mode_set:
+            self._mode = mode
+        return new_mode_set
 
     def _request_new_mode(self, mode):
         start_time_ns = monotonic_ns()
@@ -542,9 +575,6 @@ class MCP2515:
         with self.bus_device_obj as spi:
             spi.write(self._buffer, end=4)
 
-    # def _disable_wake(self):
-    #     self._mod_register(_CANINTF, _WAKIF, 0)
-
     def _read_register(self, regsiter_addr):
         self._buffer[0] = _READ
         self._buffer[1] = regsiter_addr
@@ -571,3 +601,108 @@ class MCP2515:
         self._buffer[2] = register_value
         with self.bus_device_obj as spi:
             spi.write(self._buffer, end=3)
+
+    ######## CANIO API METHODS #############
+
+    @property
+    def baudrate(self):
+        """ The baud rate (read-only)"""
+
+    @property
+    def transmit_error_count(self):
+        """ The number of transmit errors (read-only). Increased for a detected transmission error,\
+             decreased for successful transmission. Limited to the range from 0 to 255 inclusive. \
+                 Also called TEC."""
+
+    @property
+    def receive_error_count(self):
+        """ The number of receive errors (read-only). Increased for a detected reception error, \
+            decreased for successful reception. Limited to the range from 0 to 255 inclusive. Also
+         called REC."""
+
+    @property
+    def error_warning_state_count(self):
+        """ The number of times the controller enterted the Error Warning state (read-only). This\
+             number wraps around to 0 after an implementation-defined number of errors."""
+
+    @property
+    def error_passive_state_count(self):
+        """ The number of times the controller enterted the Error Passive state (read-only). This\
+             number wraps around to 0 after an implementation-defined number of errors."""
+
+    @property
+    def bus_off_state_count(self):
+        """ The number of times the controller enterted the Bus Off state (read-only). This number\
+             wraps around to 0 after an implementation-defined number of errors."""
+
+    @property
+    def state(self):  # State
+        """The current state of the bus. """
+
+    @property
+    def loopback(self):  # bool
+        """True if the device was created in loopback mode, False otherwise"""
+        return self._mode == _MODE_LOOPBACK
+
+    @property
+    def silent(self):  # bool
+        """True if the device was created in silent mode, False otherwise"""
+        return self._mode == _MODE_LISTENONLY
+
+    def restart(self):
+        """If the device is in the bus off state, restart it."""
+
+    def listen(self, match=None, *, timeout: float = 10):
+        """Start receiving messages that match any one of the filters.
+
+        Creating a listener is an expensive operation and can interfere with reception of messages
+        by other listeners.
+
+    There is an implementation-defined maximum number of listeners and limit to the complexity of
+    the filters.
+
+    If the hardware cannot support all the requested matches, a ValueError is raised. Note that \
+        generally there are some number of hardware filters shared among all fifos.
+
+    A message can be received by at most one Listener. If more than one listener matches a message,\
+         it is undefined which one actually receives it.
+
+    An empty filter list causes all messages to be accepted.
+
+    Timeout dictates how long readinto, read and next() will block.
+
+        Args:
+            match (Optional[Sequence[Match]], optional): [description]. Defaults to None.
+            timeout (float, optional): [description]. Defaults to 10.
+
+        Returns:
+            Listener: [description]
+        """
+        print("match:", match)
+        return Listener(self, timeout)
+
+    def send(self, message):
+        """Send a message on the bus with the given data and id. If the message could not be sent
+         due to a full fifo or a bus error condition, RuntimeError is raised.
+
+        Args:
+            message (canio.Message): The message to send. Must be a valid `canio.Message`
+        """
+        self.send_buffer(
+            message.data, message.id, extended_id=message.extended, rtr=message.rtr
+        )
+
+    def deinit(self):
+        """Deinitialize this object, freeing its hardware resources"""
+        self._cs_pin.deinit()
+
+    def __enter__(self):
+        """Returns self, to allow the object to be used in a The with statement statement for \
+            resource control"""
+        return self
+
+    def __exit__(self, unused1, unused2, unused3):
+        """Calls deinit()"""
+        self.deinit()
+
+    ##################### End canio API ################
