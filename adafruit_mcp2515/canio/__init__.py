@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 """Python implementation of the CircuitPython core `canio` API"""
-# pylint:disable=too-few-public-methods
+# pylint:disable=too-few-public-methods, invalid-name, redefined-builtin
 import time
 
 
@@ -11,32 +11,22 @@ class Message:
     """
 
     # pylint:disable=too-many-arguments,invalid-name,redefined-builtin
-    def __init__(self, id, data=None, size=None, rtr=False, extended=False):
+    def __init__(self, id, data, extended=False):
         """Create a `Message` to send
 
         Args:
             id (int): The numeric ID of the message
             data (bytes): The content of the message
-            size (int): The amount of data requested, for an rtr
-            rtr (bool): True if the message represents an rtr (Remote Transmission Request)
             extended (bool): True if the
         Raises:
             AttributeError: If `data` of type `bytes` is not provided for a non-RTR message
             AttributeError: If `data` is larger than 8 bytes
-            AttributeError: If `size` is set for a non-RTR message
         """
 
-        if size is not None and not rtr:
-            raise AttributeError("non-RTR canio.Message should not set a `size`")
-
-        self._rtr = None
         self._data = None
-        self._id = None
         self.id = id
         self.data = data
         self.extended = extended
-        self.size = size
-        self.rtr = rtr
 
     @property
     def data(self):
@@ -45,9 +35,7 @@ class Message:
 
     @data.setter
     def data(self, new_data):
-        if (new_data is None) or (
-            not (type(new_data) in [bytes, bytearray]) and not self.rtr
-        ):
+        if (new_data is None) or (not (type(new_data) in [bytes, bytearray])):
 
             raise AttributeError(
                 "non-RTR canio.Message must have a `data` argument of type `bytes`"
@@ -60,23 +48,24 @@ class Message:
         # self._data = new_data
         self._data = bytearray(new_data)
 
-    @property
-    def rtr(self):
-        """True if the message represents a remote transmission request (RTR). Setting rtr to true\
-            zeros out data
-        """
-        return self._rtr
-
-    @rtr.setter
-    def rtr(self, is_rtr):
-        if is_rtr and self.data:
-            self.data = bytes(len(self._data))
-        self._rtr = is_rtr
-
 
 class RemoteTransmissionRequest:
     """RRTTTTRRRR
     """
+
+    def __init__(self, id: int, length: int, *, extended: bool = False):
+        """Construct a Message to send on a CAN bus
+
+        Args:
+            id (int): The numeric ID of the requested message
+            length (int): The length of the requested message
+            extended (bool, optional): True if the message has an extended identifier, False if it\
+                has a standard identifier. Defaults to False.
+
+        """
+        self.id = id
+        self.length = length
+        self.extended = extended
 
 
 class Listener:
@@ -137,35 +126,58 @@ class Listener:
         self.deinit()
 
 
-# class BusState:
+class BusState:
+    """The state of the CAN bus """
 
-# The state of the CAN bus
+    ERROR_ACTIVE = 0
+    """The bus is in the normal (active) state"""
 
-# ERROR_ACTIVE:object
-# The bus is in the normal (active) state
+    ERROR_WARNING = 1
+    """ The bus is in the normal (active) state, but a moderate number of\
+        errors have occurred recently.
 
-# ERROR_WARNING:object
-# The bus is in the normal (active) state, but a moderate number of errors have occurred recently.
+        NOTE: Not all implementations may use ERROR_WARNING. Do not rely on seeing ERROR_WARNING\
+            before ERROR_PASSIVE.
+    """
 
-# NOTE: Not all implementations may use ERROR_WARNING. Do not rely on seeing ERROR_WARNING before\
-#  ERROR_PASSIVE.
+    ERROR_PASSIVE = 2
+    """ The bus is in the passive state due to the number of errors that have occurred recently.
 
-# ERROR_PASSIVE:object
-# The bus is in the passive state due to the number of errors that have occurred recently.
-
-# This device will acknowledge packets it receives, but cannot transmit messages. If additional\
-# errors occur, this device may progress to BUS_OFF. If it successfully acknowledges other packets\
-# on the bus, it can return to ERROR_WARNING or ERROR_ACTIVE and transmit packets.
-
-# BUS_OFF:object
-# The bus has turned off due to the number of errors that have occurred recently. It must be \
-# restarted before it will send or receive packets. This device will neither send or acknowledge \
-# packets on the bus.
+    This device will acknowledge packets it receives, but cannot transmit messages. If additional\
+    errors occur, this device may progress to BUS_OFF. If it successfully acknowledges other\
+    packets on the bus, it can return to ERROR_WARNING or ERROR_ACTIVE and transmit packets.
+    """
+    BUS_OFF = 3
+    """ The bus has turned off due to the number of errors that have occurred recently. It must be \
+    restarted before it will send or receive packets. This device will neither send or acknowledge \
+    packets on the bus."""
 
 
 class Match:
-    """MATCHA
+    """A class representing an ID pattern to match against
     """
+
+    def __init__(self, address: int, *, mask: int = 0, extended: bool = False):
+        """Describe CAN bus messages to match
+
+    Construct a Match with the given properties.
+
+    If mask is nonzero, then the filter is for any sender which matches all the nonzero bits in\
+        mask. Otherwise, it matches exactly the given address. If extended is true then only\
+            extended addresses are matched, otherwise only standard addresses are matched.
+
+        Args:
+            address (int): he address to match
+            mask (int, optional): The optional mask of addresses to match. Defaults to 0.
+            extended (bool, optional): True to match extended addresses, False to match standard\
+                addresses.
+
+        Returns:
+            [type]: [description]
+        """
+        self.address = address
+        self.mask = mask
+        self.extended = extended
 
 
 ############# non-api classes and methods
@@ -192,6 +204,3 @@ class Timer:
         """Re-wind the timer to a new timeout and start ticking"""
         self._timeout = float(new_timeout)
         self._start_time = time.monotonic()
-
-
-# h

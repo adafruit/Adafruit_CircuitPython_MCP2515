@@ -29,7 +29,7 @@ from struct import unpack_from, pack_into  # pylint:disable=unused-import
 from time import sleep, monotonic, monotonic_ns  # pylint:disable=unused-import
 from micropython import const
 import adafruit_bus_device.spi_device as spi_device
-from .canio import Message, Listener, Match
+from .canio import *
 
 __version__ = "0.0.0-auto.0"
 __repo__ = "https://github.com/adafruit/Adafruit_CircuitPython_MCP2515.git"
@@ -269,9 +269,7 @@ class MCP2515:
             raise RuntimeError("Unable to set mode")
         return res
 
-    def send_buffer(
-        self, message_buffer, tx_id, extended_id=False, rtr=False, wait_sent=True
-    ):  # pylint:disable=too-many-arguments
+    def send(self, message_obj, wait_sent=True):  # pylint:disable=too-many-arguments
         """send a message buffer"""
         # send example call:
         # CAN.sendMsgBuf(tx_id=0x00, ext=0, rtrBit=0, len=8, buf=stmp, wait_sent=true)
@@ -280,8 +278,9 @@ class MCP2515:
         tx_buff = self._get_tx_buffer()  # info = addr.
 
         # write_canMsg(tx_buffer_addr, tx_id, ext, rtrBit, len, byte * buf)
+
         # TODO: set buffer priority
-        self._write_message(tx_buff, tx_id, extended_id, rtr, message_buffer)
+        self._write_message(tx_buff, message_obj)
         if not wait_sent:
             return True
         sleep(0.010)
@@ -344,21 +343,21 @@ class MCP2515:
             sender_id = (raw_idz & ((0b1111111111100000) << 16)) >> (16 + 5)
 
         dlc = self._buffer[4]
-        print("DLC:", "{:#010b}".format(dlc))
+        # length is max 8
+        message_length = min(8, dlc & 0xF)
 
-        rtr = (dlc & _RTR_MASK) > 0
-        message_length = dlc & 0xF
-        print("Masked msg length:", message_length)
-        if message_length > 8:
-            message_length = 8
-        message = Message(
-            sender_id,
-            data=bytes(self._buffer[5 : 5 + message_length]),
-            extended=is_extended_id,
-            rtr=rtr,
-        )
+        if (dlc & _RTR_MASK) > 0:
+            frame_obj = RemoteTransmissionRequest(
+                sender_id, message_length, extended=is_extended_id
+            )
+        else:
+            frame_obj = Message(
+                sender_id,
+                data=bytes(self._buffer[5 : 5 + message_length]),
+                extended=is_extended_id,
+            )
 
-        self._unread_message_queue.append(message)
+        self._unread_message_queue.append(frame_obj)
 
     def _read_from_rx_buffers(self):
         """Read the next available message into the given `bytearray`
@@ -376,20 +375,23 @@ class MCP2515:
             self._read_rx_buffer(_READ_RX1)
 
     # pylint:disable=too-many-arguments
-    def _write_message(self, tx_buffer, send_id, extended_id, rtr, message_buffer):
-        if len(message_buffer) > _MAX_CAN_MSG_LEN:
-            raise AttributeError("Message buffer must be <=%d" % _MAX_CAN_MSG_LEN)
+    def _write_message(self, tx_buffer, message_obj):
+
+        if isinstance(message_obj, RemoteTransmissionRequest):
+            dlc = message_obj.length
+        else:
+            dlc = len(message_obj.data)
+
+        if dlc > _MAX_CAN_MSG_LEN:
+            raise AttributeError("Message/RTR length must be <=%d" % _MAX_CAN_MSG_LEN)
         load_command = tx_buffer.LOAD_CMD
 
-        # add the RTR_MASK bits to len to get DLC, if rtr
-        dlc = len(message_buffer)
-        if rtr:
-            print("setting RTR flag")
+        if isinstance(message_obj, RemoteTransmissionRequest):
             dlc |= _RTR_MASK
 
         # get id buffer segment
 
-        self._load_id_buffer(send_id, extended_id)
+        self._load_id_buffer(message_obj.id, message_obj.extended)
 
         # this splits up the id header, dlc (len, rtr status), and message buffer
         # TODO: check if we can send in one buffer, in which case `id_buffer` isn't needed
@@ -413,10 +415,11 @@ class MCP2515:
             # send DLC
 
             spi.write(bytearray([dlc]))
-            print("DLC:", "{:#010b}".format(dlc))
             # send message bytes, limit to 8?
-            spi.write(message_buffer, end=8)
+            if isinstance(message_obj, Message):
+                spi.write(message_obj.data, end=8)
 
+        # send the frame based on the current buffers
         self._start_transmit(tx_buffer)
 
     # pylint:enable=too-many-arguments
@@ -669,7 +672,7 @@ class MCP2515:
 
     An empty filter list causes all messages to be accepted.
 
-    Timeout dictates how long readinto, read and next() will block.
+    Timeout dictates how long `receive()` and `next()` will block.
 
         Args:
             match (Optional[Sequence[Match]], optional): [description]. Defaults to None.
@@ -681,16 +684,16 @@ class MCP2515:
         print("match:", match)
         return Listener(self, timeout)
 
-    def send(self, message):
-        """Send a message on the bus with the given data and id. If the message could not be sent
-         due to a full fifo or a bus error condition, RuntimeError is raised.
+    # def send(self, message):
+    #     """Send a message on the bus with the given data and id. If the message could not be sent
+    #      due to a full fifo or a bus error condition, RuntimeError is raised.
 
-        Args:
-            message (canio.Message): The message to send. Must be a valid `canio.Message`
-        """
-        self.send_buffer(
-            message.data, message.id, extended_id=message.extended, rtr=message.rtr
-        )
+    #     Args:
+    #         message (canio.Message): The message to send. Must be a valid `canio.Message`
+    #     """
+    #     self.send_buffer(
+    #         message.data, message.id, extended_id=message.extended, rtr=message.rtr
+    #     )
 
     def deinit(self):
         """Deinitialize this object, freeing its hardware resources"""
