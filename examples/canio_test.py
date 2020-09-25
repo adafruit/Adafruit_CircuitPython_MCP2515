@@ -2,9 +2,13 @@
 #
 # SPDX-License-Identifier: MIT
 
-# pytlint:disable=no-member,too-many-statements,unused-import,ungrouped-imports
 try:
-    from canio import *
+    from canio import (
+        Message,
+        RemoteTransmissionRequest,
+        Match,
+        # BusState,
+    )
     from board import CAN_RX, CAN_TX
 
     def builtin_bus_factory():
@@ -14,20 +18,21 @@ try:
 except ImportError as e:
     print("no native canio, trying mcp")
     from digitalio import DigitalInOut
-    from board import D5 as CS_PIN, SPI
+
+    import board
+
     from adafruit_mcp2515.canio import (
-        Timer,
         Message,
         RemoteTransmissionRequest,
         Match,
-        BusState,
+        # BusState,
     )
     from adafruit_mcp2515 import MCP2515 as CAN
 
     def builtin_bus_factory():
-        cs = DigitalInOut(CS_PIN)
+        cs = DigitalInOut(board.D5)
         cs.switch_to_output()
-        return CAN(SPI(), cs, baudrate=1000000, loopback=True)
+        return CAN(board.SPI(), cs, baudrate=1000000, loopback=True, debug=True)
 
 
 max_standard_id = 0x7FF
@@ -35,7 +40,7 @@ max_extended_id = 0x1FFFFFFF
 lengths = (0, 1, 2, 3, 4, 5, 6, 7, 8)
 
 
-def test(can=builtin_bus_factory):
+def test_message(_can=builtin_bus_factory):
     print("Testing Message")
     assert Message(id=0, data=b"").id == 0
     assert Message(id=1, data=b"").id == 1
@@ -46,6 +51,9 @@ def test(can=builtin_bus_factory):
     assert not Message(id=0, extended=False, data=b"").extended
     assert Message(id=0, extended=True, data=b"").extended
 
+
+def test_rtr_constructor():
+
     print("Testing RemoteTransmissionRequest")
     assert RemoteTransmissionRequest(id=0, length=0).id == 0
     assert RemoteTransmissionRequest(id=1, length=0).id == 1
@@ -54,6 +62,9 @@ def test(can=builtin_bus_factory):
     assert not RemoteTransmissionRequest(id=0, length=1).extended
     assert not RemoteTransmissionRequest(id=0, extended=False, length=1).extended
     assert RemoteTransmissionRequest(id=0, extended=True, length=1).extended
+
+
+def test_rtr_receive(can=builtin_bus_factory):
 
     with can() as b, b.listen(timeout=0.1) as l:
 
@@ -116,6 +127,9 @@ def test(can=builtin_bus_factory):
             assert isinstance(mi, Message)
             assert mi.data == data
 
+
+def test_filters1(can=builtin_bus_factory):
+
     matches = [
         Match(0x408),
         Match(0x700, mask=0x7F0),
@@ -162,6 +176,14 @@ def test(can=builtin_bus_factory):
         mi = l.receive()
         assert not mi
 
+
+def test_filters2(can=builtin_bus_factory):
+    matches = [
+        Match(0x408),
+        Match(0x700, mask=0x7F0),
+        Match(0x4081975, extended=True),
+        Match(0x888800, mask=0xFFFFF0, extended=True),
+    ]
     print("Test filters 2")
     with can() as b, b.listen(matches[0:2], timeout=0.1) as l1, b.listen(
         matches[2:4], timeout=0.1
@@ -215,9 +237,16 @@ def test(can=builtin_bus_factory):
         assert not mi1
         assert not mi2
 
+
+def test_iter(can=builtin_bus_factory):
+
     print("Test iter()")
     with can() as b, b.listen(timeout=0.1) as l:
         assert iter(l) is l
+        ### This mo is taken from the last mo= statement from the above scope
+        # previously only worked because it was left over
+        mo = Message(id=0x4081985, extended=True, data=b"")
+
         mo.data = b"\xff"
         b.send(mo)
         for i, mi in zip(range(3), l):
@@ -235,4 +264,13 @@ def test(can=builtin_bus_factory):
             print("StopIteration")
 
 
-test()
+test_suite = [
+    test_message,
+    test_rtr_constructor,
+    test_rtr_receive,
+    test_filters1,
+    test_filters2,
+    test_iter,
+]
+for test in test_suite:
+    test()
