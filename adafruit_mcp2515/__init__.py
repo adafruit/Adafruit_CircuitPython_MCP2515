@@ -306,13 +306,8 @@ class MCP2515:
 
     def send(self, message_obj, wait_sent=True):  # pylint:disable=too-many-arguments
         """send a message buffer"""
-        # send example call:
-        # CAN.sendMsgBuf(tx_id=0x00, ext=0, rtrBit=0, len=8, buf=stmp, wait_sent=true)
-
         # TODO: Timeout
         tx_buff = self._get_tx_buffer()  # info = addr.
-
-        # write_canMsg(tx_buffer_addr, tx_id, ext, rtrBit, len, byte * buf)
 
         # TODO: set buffer priority
         self._write_message(tx_buff, message_obj)
@@ -328,8 +323,6 @@ class MCP2515:
             # the status register address is whatever tx_buff_n is, minus one?
             tx_buff_status = self._read_register(tx_buff.CTRL_REG)
             self._dbg(_tx_buffer_status_decode(tx_buff_status))
-            # tx_buffer_status = mcp2515_readRegister(txbuf_n - 1)  # read send buff ctrl reg
-            # check for 0x08/0b00001000 being un-set
             send_confirmed = (tx_buff_status & _TXB_TXREQ_M) == 0
 
         return True
@@ -357,6 +350,7 @@ class MCP2515:
         return self._unread_message_queue.pop(0)
 
     def _read_rx_buffer(self, read_command):
+        # read from buffer
         with self.bus_device_obj as spi:
             self._buffer[0] = read_command
             spi.write_readinto(
@@ -370,19 +364,10 @@ class MCP2515:
 
             spi.readinto(self._buffer, end=15)
         ######### Unpack IDs/ set Extended #######
+
+
         raw_ids = unpack_from(">I", self._buffer)[0]
-
-        is_extended_id = (raw_ids & _TXB_EXIDE_M_16 << 16) > 0
-
-        if is_extended_id:
-            # get bottom 18
-            bottom_chunk = raw_ids & EXTID_BOTTOM_18_MASK
-            top_chunk = raw_ids & EXTID_TOP_11_READ_MASK
-            # shift the top chunk back down 3 to start/end at bit 28=29th
-            top_chunk >>= 3
-            sender_id = top_chunk | bottom_chunk
-        else:
-            sender_id = (raw_ids & ((0b1111111111100000) << 16)) >> (16 + 5)
+        is_extended, sender_id = self._unload_ids(raw_ids)
         ############# Length/RTR Size #########
         dlc = self._buffer[4]
         # length is max 8
@@ -480,6 +465,25 @@ class MCP2515:
                 in_end=1,
             )
 
+    def _set_mask_register(self, register):
+        
+    def _unload_ids(self, raw_ids):
+        """In=> 32-bit int packed with (StdID or ExTID top11  + bot18)+ extid bit
+        out=> id, extended flag"""
+        is_extended_id = (raw_ids & _TXB_EXIDE_M_16 << 16) > 0
+        # std id field is most significant 11 bits of 4 bytes of id registers
+        top_chunk = raw_ids & EXTID_TOP_11_READ_MASK
+        if is_extended_id:
+            # get bottom 18
+            bottom_chunk = raw_ids & EXTID_BOTTOM_18_MASK
+            top_chunk = top_chunk
+            # shift the top chunk back down 3 to start/end at bit 28=29th
+            top_chunk >>= 3
+            sender_id = top_chunk | bottom_chunk
+        else:
+            # shift down the  3 [res+extid+res]+18 extid bits
+            sender_id = top_chunk >> (18 + 3)
+        return (is_extended, sender_id)
     def _load_id_buffer(self, send_id, extended=False):
         self._id_buffer[0] = 0
         self._id_buffer[1] = 0
@@ -699,6 +703,7 @@ class MCP2515:
         Returns:
             Listener: [description]
         """
+        # set up masks/filters
         self._dbg("match:", match)
         return Listener(self, timeout)
 

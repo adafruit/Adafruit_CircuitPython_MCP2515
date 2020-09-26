@@ -157,7 +157,7 @@ def test_filters1(can=builtin_bus_factory):
         mo = RemoteTransmissionRequest(id=0x409, length=0)
         b.send(mo)
         mi = l.receive()
-        assert not mi
+        assert not mi , "ID 0x409 not blocked by filters & masks"
 
         # Extended
         # exact ID matching
