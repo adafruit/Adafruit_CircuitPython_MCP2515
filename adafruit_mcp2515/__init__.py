@@ -369,7 +369,7 @@ class MCP2515:
             )
 
             spi.readinto(self._buffer, end=15)
-
+        ######### Unpack IDs/ set Extended #######
         raw_ids = unpack_from(">I", self._buffer)[0]
 
         is_extended_id = (raw_ids & _TXB_EXIDE_M_16 << 16) > 0
@@ -383,7 +383,7 @@ class MCP2515:
             sender_id = top_chunk | bottom_chunk
         else:
             sender_id = (raw_ids & ((0b1111111111100000) << 16)) >> (16 + 5)
-
+        ############# Length/RTR Size #########
         dlc = self._buffer[4]
         # length is max 8
         message_length = min(8, dlc & 0xF)
@@ -509,7 +509,7 @@ class MCP2515:
         else:
             self._dbg("normal ID")
             # TODO: dry with the above
-            std_id = send_id & 0x3FF  # The actual ID?
+            std_id = send_id & 0x7FF  # The actual ID?
             self._dbg("\tStd: ID", hex(std_id))
             pack_into(">H", self._id_buffer, 0, std_id << 5)
             self._dbg("\tID Buffer:", self._id_buffer)

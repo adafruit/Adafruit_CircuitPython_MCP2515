@@ -57,10 +57,6 @@ def test_rtr_constructor():
     print("Testing RemoteTransmissionRequest")
     assert RemoteTransmissionRequest(id=0, length=0).id == 0
     assert RemoteTransmissionRequest(id=1, length=0).id == 1
-    assert (
-        RemoteTransmissionRequest(id=0x1FFFFFFF, extended=True, length=1).id
-        == 0x1FFFFFFF
-    ), "Max extended ID not set properly"
     for i in lengths:
         assert RemoteTransmissionRequest(id=0, length=i).length == i
     assert not RemoteTransmissionRequest(id=0, length=1).extended
@@ -92,7 +88,9 @@ def test_rtr_receive(can=builtin_bus_factory):
             mi = l.receive()
             assert mi
             assert isinstance(mi, RemoteTransmissionRequest)
-            assert mi.id == max_standard_id
+            assert (
+                mi.id == max_standard_id
+            ), "Max standard ID not sent/received properly: %s" % hex(mi.id)
             assert mi.length == length
 
             mo = RemoteTransmissionRequest(id=0x555, length=length)
@@ -111,7 +109,9 @@ def test_rtr_receive(can=builtin_bus_factory):
             mi = l.receive()
             assert mi
             assert isinstance(mi, RemoteTransmissionRequest)
-            assert mi.id == max_extended_id
+            assert (
+                mi.id == max_extended_id
+            ), "Max extended ID not sent/received properly"
             assert mi.length == length
 
             data = bytes(range(length))
