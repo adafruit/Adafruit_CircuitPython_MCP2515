@@ -57,6 +57,10 @@ def test_rtr_constructor():
     print("Testing RemoteTransmissionRequest")
     assert RemoteTransmissionRequest(id=0, length=0).id == 0
     assert RemoteTransmissionRequest(id=1, length=0).id == 1
+    assert (
+        RemoteTransmissionRequest(id=0x1FFFFFFF, extended=True, length=1).id
+        == 0x1FFFFFFF
+    ), "Max extended ID not set properly"
     for i in lengths:
         assert RemoteTransmissionRequest(id=0, length=i).length == i
     assert not RemoteTransmissionRequest(id=0, length=1).extended
@@ -72,16 +76,14 @@ def test_rtr_receive(can=builtin_bus_factory):
             print("Test messages of length", length)
 
             mo = RemoteTransmissionRequest(id=0x5555555, extended=True, length=length)
+
             b.send(mo)
             mi = l.receive()
             assert mi
             assert isinstance(mi, RemoteTransmissionRequest)
-
-            print("id:", mi.id)
             assert mi.id == 0x5555555, "Extended ID does not match: 0x{:07X}".format(
                 mi.id
             )
-            print("didn't like the ID")
             assert mi.extended
             assert mi.length == length
 

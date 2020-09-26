@@ -100,9 +100,17 @@ _RX1IF = const(0x02)
 _WAKIF = const(0x40)
 # _MERRF = const(0x80)
 
-_TXB_EXIDE_M = const(0x08)
+_TXB_EXIDE_M_16 = const(0x08)
 _TXB_TXREQ_M = const(0x08)  # TX request/completion bit
 
+# 29 bits -18 bottm = 11 remaining:
+# 0b 00011111 111111 [11 11111111 11111111] -> bottom 18
+# 0b 00011111 111111 [00 00000000 00000000] -> bottom 18
+# 0b 00011111 11111100 00000000 00000000]
+# 0b00011111111111000000000000000000 0x1ffc0000
+EXTID_TOP_11_MASK = 0x1FFC0000
+
+EXTID_TOP_11_READ_MASK = 0xFFE00000
 # CANINTF Register Bits
 
 # masks
@@ -122,7 +130,7 @@ _STAT_TX2_PENDING = const(0x40)
 
 _STAT_TX_PENDING_MASK = const(_STAT_TX0_PENDING | _STAT_TX1_PENDING | _STAT_TX2_PENDING)
 
-_EXTENDED_ID_MASK = (1 << 18) - 1  # bottom 18 bits
+EXTID_BOTTOM_18_MASK = (1 << 18) - 1  # bottom 18 bits
 _SEND_TIMEOUT_MS = const(5)  # 500ms
 _MAX_CAN_MSG_LEN = 8  # ?!
 # perhaps this will be stateful later?
@@ -162,15 +170,6 @@ _BAUD_RATES = {
 
 def _has_elapsed(start, timeout_ms):
     return (monotonic_ns() - start) / 1000000 > timeout_ms
-
-
-# doesn't obey debug=False for now
-def _split_bin(int_number):
-    bin_str = "{:032b}".format(int_number)
-    bit_width = 32
-    for start_idx in range(bit_width / 4):
-        print(" " + bin_str[start_idx * 4 : (start_idx + 1) * 4], end="")
-    print("")
 
 
 def _tx_buffer_status_decode(status_byte):
@@ -371,12 +370,19 @@ class MCP2515:
 
             spi.readinto(self._buffer, end=15)
 
-        raw_idz = unpack_from(">I", self._buffer)[0]
-        is_extended_id = (raw_idz & (1 << 19)) > 0
+        raw_ids = unpack_from(">I", self._buffer)[0]
+
+        is_extended_id = (raw_ids & _TXB_EXIDE_M_16 << 16) > 0
+
         if is_extended_id:
-            sender_id = raw_idz & ((1 << 18) - 1)
+            # get bottom 18
+            bottom_chunk = raw_ids & EXTID_BOTTOM_18_MASK
+            top_chunk = raw_ids & EXTID_TOP_11_READ_MASK
+            # shift the top chunk back down 3 to start/end at bit 28=29th
+            top_chunk >>= 3
+            sender_id = top_chunk | bottom_chunk
         else:
-            sender_id = (raw_idz & ((0b1111111111100000) << 16)) >> (16 + 5)
+            sender_id = (raw_ids & ((0b1111111111100000) << 16)) >> (16 + 5)
 
         dlc = self._buffer[4]
         # length is max 8
@@ -474,29 +480,31 @@ class MCP2515:
                 in_end=1,
             )
 
-    def _load_id_buffer(self, send_id, extended_id=False):
-        _split_bin(send_id)
-        if extended_id:
+    def _load_id_buffer(self, send_id, extended=False):
+        self._id_buffer[0] = 0
+        self._id_buffer[1] = 0
+        self._id_buffer[2] = 0
+        self._id_buffer[3] = 0
 
-            extended_id = send_id & _EXTENDED_ID_MASK  # bottom 18 bits
-            self._dbg("\tExtended ID:", "0x{:04X}".format(extended_id))
-            pack_into(">I", self._id_buffer, 0, extended_id)
+        if extended:
+            extended_id = send_id
 
-            id_buff_int = unpack_from(">I", self._id_buffer)[0]
-            _split_bin(id_buff_int)
+            extid_bottom_18 = extended_id & EXTID_BOTTOM_18_MASK  # bottom 18 bits
 
-            # need to set top of buffer[1], so get the current value
+            pack_into(">I", self._id_buffer, 0, extid_bottom_18)
+
+            # need to set top of buffer[1], so get the current lsbyte
             extid_msbits = self._id_buffer[1]
             # get the next 2 bytes of the given ID
 
-            std_id = (send_id & 0x00FC0000) >> 18
-
-            self._dbg("\tStd: ID", std_id)
-            ms_bytes = std_id << 5 | _TXB_EXIDE_M | extid_msbits
+            stdid_reg_bytes = (extended_id & EXTID_TOP_11_MASK) >> 16  ## top two bytes
+            # 0b00011111 11111100 < -- two empty bits for top to of 18 bit bottom chunk
+            # now we need to shift up 3 to take up the empty top 3 bytes
+            stdid_reg_bytes <<= 3
+            # finally we OR the top 11 + 3[ res+ EXTID+res] + 2 top of bottom chunk = 16
+            ms_bytes = stdid_reg_bytes | _TXB_EXIDE_M_16 | extid_msbits
+            # pack into first two/ 2 most sig bytes
             pack_into(">H", self._id_buffer, 0, ms_bytes)
-
-            id_buff_int = unpack_from(">I", self._id_buffer)[0]
-            _split_bin(id_buff_int)
 
         else:
             self._dbg("normal ID")
@@ -505,9 +513,6 @@ class MCP2515:
             self._dbg("\tStd: ID", hex(std_id))
             pack_into(">H", self._id_buffer, 0, std_id << 5)
             self._dbg("\tID Buffer:", self._id_buffer)
-
-        id_buff_int = unpack_from(">I", self._id_buffer)[0]
-        _split_bin(id_buff_int)
 
     @property
     def _tx_buffers_in_use(self):
@@ -541,17 +546,6 @@ class MCP2515:
 
         # *******8 set baud rate ***********
         cnf1, cnf2, cnf3 = _BAUD_RATES[baudrate]
-
-        self._dbg(
-            "baud rate:",
-            baudrate,
-            "cnf1:",
-            hex(cnf1),
-            "cnf2:",
-            hex(cnf2),
-            "cnf3:",
-            hex(cnf3),
-        )
 
         self._set_register(_CNF1, cnf1)
         self._set_register(_CNF2, cnf2)
