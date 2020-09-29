@@ -374,6 +374,40 @@ def test_mcp_extended_id_exact_filters(can=builtin_bus_factory):
         assert not mi, "ID %x not blocked by filters & masks" % (max_extended_id - 1)
 
 
+def test_mcp_extended_id_masked_filters(can=builtin_bus_factory):
+    print("Test MCP Extended ID filters")
+    extended_matches = [
+        Match(0x1FFFCAFE, mask=0xFFFF, extended=True),
+        Match(0x0BEEF000, mask=0x1FFFF000, extended=True),
+    ]
+
+    with can() as b, b.listen(extended_matches, timeout=0.1) as l:
+        # Extended
+        # exact ID matching
+        mo = Message(id=0x1FFFCAFE, extended=True, data=b"")
+        b.send(mo)
+        mi = l.receive()
+        assert mi, "Exact extended filter match blocked"
+
+        # mask matching
+        mo = Message(id=0x0BEEF000, extended=True, data=b"")
+        b.send(mo)
+        mi = l.receive()
+        assert mi
+
+        # non-matching
+        mo = Message(id=0x1FFFFAFF, extended=True, data=b"")
+        b.send(mo)
+        mi = l.receive()
+        assert not mi
+
+        # non-matching
+        mo = Message(id=0x00BEEF00, extended=True, data=b"")
+        b.send(mo)
+        mi = l.receive()
+        assert not mi, "ID %x not blocked by filters & masks" % (max_extended_id - 1)
+
+
 test_suite = [
     test_message,
     test_rtr_constructor,
@@ -388,6 +422,7 @@ elif CAN_TYPE == "MCP2515":
     test_suite.append(test_mcp_standard_id_exact_filters)
     test_suite.append(test_mcp_standard_id_masked_filters)
     test_suite.append(test_mcp_extended_id_exact_filters)
+    test_suite.append(test_mcp_extended_id_masked_filters)
 
 failures = []
 for test in test_suite:
