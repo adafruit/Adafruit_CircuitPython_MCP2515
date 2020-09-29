@@ -767,12 +767,14 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         """ The number of transmit errors (read-only). Increased for a detected transmission error,\
              decreased for successful transmission. Limited to the range from 0 to 255 inclusive. \
                  Also called TEC."""
+        return self._read_register(_TEC)
 
     @property
     def receive_error_count(self):
         """ The number of receive errors (read-only). Increased for a detected reception error, \
             decreased for successful reception. Limited to the range from 0 to 255 inclusive. Also
          called REC."""
+        return self._read_register(_REC)
 
     @property
     def error_warning_state_count(self):
