@@ -74,55 +74,74 @@ class Listener:
         canio.CAN object.
     """
 
-    def __init__(self, bus_obj, timeout=1.0):
+    def __init__(self, can_bus_obj, timeout=1.0):
         self._timer = Timer()
-        self._bus_obj = bus_obj
-        self._read_timeout = None
+        self._can_bus_obj = can_bus_obj
+        self._timeout = None
         self.timeout = timeout
 
     @property
     def timeout(self):
         """The maximum amount of time in seconds that `read` or `readinto` will wait before giving\
             up"""
-        return self._read_timeout
+        return self._timeout
 
     @timeout.setter
     def timeout(self, timeout):
-        self._read_timeout = float(timeout)
+        self._timeout = float(timeout)
 
     def receive(self):
         """Receives a message. If after waiting up to self.timeout seconds if no message is\
         received, None is returned. Otherwise, a Message is returned."""
-        self._timer.rewind_to(self._read_timeout)
+        self._timer.rewind_to(self.timeout)
         while not self._timer.expired:
-            if self._bus_obj.unread_message_count == 0:
+            if self._can_bus_obj.unread_message_count == 0:
                 continue
-            return self._bus_obj.read_message()
+            return self._can_bus_obj.read_message()
         return None
 
     def in_waiting(self):
         """Returns the number of messages waiting"""
-        return self._bus_obj.unread_message_count
+        return self._can_bus_obj.unread_message_count
 
     def __iter__(self):
-        """Returns self, unless the object is deinitialized"""
+        """Returns self"""
+        if self._can_bus_obj is None:
+            raise ValueError(
+                "Object has been deinitialized and can no longer be used. Create a new object."
+            )
         return self
 
     def __next__(self):
         """Receives a message, after waiting up to self.timeout seconds"""
+        if self._can_bus_obj is None:
+            raise ValueError(
+                "Object has been deinitialized and can no longer be used. Create a new object."
+            )
         return self.receive()
 
     def deinit(self):
         """Deinitialize this object, freeing its hardware resources"""
-        # unset filters and masks
+        self._can_bus_obj.deinit_filtering_registers()
+        self._timer = None
+        self._can_bus_obj = None
+        self._timeout = None
 
     def __enter__(self):
         """Returns self, to allow the object to be used in a The with statement statement for\
             resource control"""
+        if self._can_bus_obj is None:
+            raise ValueError(
+                "Object has been deinitialized and can no longer be used. Create a new object."
+            )
         return self
 
     def __exit__(self, unused1, unused2, unused3):
         """Calls deinit()"""
+        if not self._can_bus_obj:
+            raise ValueError(
+                "Object has been deinitialized and can no longer be used. Create a new object."
+            )
         self.deinit()
 
 

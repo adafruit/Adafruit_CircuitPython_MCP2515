@@ -420,12 +420,50 @@ def test_bus_state(can=builtin_bus_factory):
         ]
 
 
+def test_listener_deinit(can=builtin_bus_factory):
+    with can() as b:
+        extended_matches = [
+            Match(0x1FFFCAFE, mask=0xFFFF, extended=True),
+            Match(0x0BEEF000, mask=0x1FFFF000, extended=True),
+        ]
+        standard_matches = [
+            Match(0x400, mask=0x7F0),  # should allow 0x40*
+            Match(0x70A, mask=0x70F),  # should allow 0x7*A
+        ]
+        with b.listen(extended_matches, timeout=0.1) as l:
+            # mask matching
+            mo = Message(id=0x0BEEF000, extended=True, data=b"")
+            b.send(mo)
+            mi = l.receive()
+            assert mi
+
+            # non-matching
+            mo = Message(id=0x1FFFFAFF, extended=True, data=b"")
+            b.send(mo)
+            mi = l.receive()
+            assert not mi
+
+        with b.listen(standard_matches, timeout=0.1) as l:
+            # non-matching
+            mo = RemoteTransmissionRequest(id=0x418, length=0)
+            b.send(mo)
+            mi = l.receive()
+            assert not mi, "ID 0x418 not blocked by masked filter"
+
+            # masked matching
+            mo = RemoteTransmissionRequest(id=0x7FA, length=0)
+            b.send(mo)
+            mi = l.receive()
+            assert mi, "ID 0x7FA blocked by masked filter"
+
+
 test_suite = [
     test_message,
     test_rtr_constructor,
     test_rtr_receive,
     test_iter,
     test_bus_state,
+    test_listener_deinit,
 ]
 # set filter tests
 if CAN_TYPE == "SAM-E":

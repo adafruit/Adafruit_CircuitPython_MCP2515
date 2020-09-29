@@ -756,6 +756,17 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         self._write_id_to_register(filter_register, match.address, match.extended)
         self._filters_in_use[mask_index].append(filter_register)
 
+    def deinit_filtering_registers(self):
+        """Clears the Receive Mask and Filter Registers"""
+
+        for mask_index, mask_reg in enumerate(MASKS):
+            self._set_register(mask_reg, 0)
+
+            for filter_reg in FILTERS[mask_index]:
+                self._set_register(filter_reg, 0)
+        self._masks_in_use = []
+        self._filters_in_use = [[], []]
+
     ######## CANIO API METHODS #############
     @property
     def baudrate(self):
@@ -780,16 +791,19 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
     def error_warning_state_count(self):
         """ The number of times the controller enterted the Error Warning state (read-only). This\
              number wraps around to 0 after an implementation-defined number of errors."""
+        raise AttributeError("`error_warning_state_count` not supported by hardware")
 
     @property
     def error_passive_state_count(self):
         """ The number of times the controller enterted the Error Passive state (read-only). This\
              number wraps around to 0 after an implementation-defined number of errors."""
+        raise AttributeError("`error_passive_state_count` not supported by hardware")
 
     @property
     def bus_off_state_count(self):
         """ The number of times the controller enterted the Bus Off state (read-only). This number\
              wraps around to 0 after an implementation-defined number of errors."""
+        raise AttributeError("`bus_off_state_count` not supported by hardware")
 
     @property
     def state(self):  # State
