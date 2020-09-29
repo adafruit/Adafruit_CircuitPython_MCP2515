@@ -25,8 +25,8 @@ Implementation Notes
 """
 
 from collections import namedtuple
-from struct import unpack_from, pack_into  # pylint:disable=unused-import
-from time import sleep, monotonic, monotonic_ns  # pylint:disable=unused-import
+from struct import unpack_from, pack_into
+from time import sleep
 from micropython import const
 import adafruit_bus_device.spi_device as spi_device
 from .canio import *
@@ -189,10 +189,6 @@ _BAUD_RATES = {
 }
 
 
-def _has_elapsed(start, timeout_ms):
-    return (monotonic_ns() - start) / 1000000 > timeout_ms
-
-
 def _tx_buffer_status_decode(status_byte):
     out_str = "Status: "
     # when CAN_H is disconnected?: 0x18
@@ -328,7 +324,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
         self._set_mode(new_mode)
 
-    def send(self, message_obj, wait_sent=True):  # pylint:disable=too-many-arguments
+    def send(self, message_obj, wait_sent=True):
         """Send a message on the bus with the given data and id. If the message could not be sent
          due to a full fifo or a bus error condition, RuntimeError is raised.
 
@@ -345,16 +341,16 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         sleep(0.010)
 
         send_confirmed = False
-        start = monotonic_ns()
-        while not send_confirmed:
-            if _has_elapsed(start, _SEND_TIMEOUT_MS):
-                raise RuntimeError("Timeout occoured waiting for transmit confirmation")
+        self._timer.rewind_to(0.005)
+        while not self._timer.expired:
             # the status register address is whatever tx_buff_n is, minus one?
             tx_buff_status = self._read_register(tx_buff.CTRL_REG)
             self._dbg(_tx_buffer_status_decode(tx_buff_status))
             send_confirmed = (tx_buff_status & _TXB_TXREQ_M) == 0
+            if send_confirmed:
+                return True
 
-        return True
+        raise RuntimeError("Timeout occoured waiting for transmit confirmation")
 
     @property
     def unread_message_count(self):
@@ -429,7 +425,6 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         if status & 0b10:
             self._read_rx_buffer(_READ_RX1)
 
-    # pylint:disable=too-many-arguments
     def _write_message(self, tx_buffer, message_obj):
 
         if isinstance(message_obj, RemoteTransmissionRequest):
@@ -476,8 +471,6 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
         # send the frame based on the current buffers
         self._start_transmit(tx_buffer)
-
-    # pylint:enable=too-many-arguments
 
     # TODO: Priority
     def _start_transmit(self, tx_buffer):
@@ -643,9 +636,8 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         raise RuntimeError("Unable to change mode")
 
     def _request_new_mode(self, mode):
-        start_time_ns = monotonic_ns()
-
-        while True:
+        self._timer.rewind_to(0.200)
+        while not self._timer.expired:
             # Request new mode
             # This is inside the loop as sometimes requesting the new mode once doesn't work
             # (usually when attempting to sleep)
@@ -655,9 +647,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
             if (status & _MODE_MASK) == mode:
                 return True
 
-            # timeout
-            if ((monotonic_ns() - start_time_ns) / 1000000) > 200:
-                raise RuntimeError("Timeout setting Mode")
+        raise RuntimeError("Timeout setting Mode")
 
     def _mod_register(self, register_addr, mask, new_value):
         """There appears to be an interface on the MCP2515 that allows for
