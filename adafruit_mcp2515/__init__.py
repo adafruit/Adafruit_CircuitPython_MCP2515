@@ -260,9 +260,12 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         self._mode = None
         self._bus_state = BusState.ERROR_ACTIVE
         self._baudrate = baudrate
+        self._loopback = loopback
+        self._silent = silent
+        self._baudrate = baudrate
 
         self._init_buffers()
-        self.initialize(baudrate, loopback, silent)
+        self.initialize()
 
     def _init_buffers(self):
 
@@ -290,14 +293,13 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
             ),
         ]
 
-    def initialize(self, baudrate, loopback, silent):
+    def initialize(self):
         """Return the sensor to the default configuration"""
-
         self._reset()
         # our mode set skips checking for sleep
         self._set_mode(_MODE_CONFIG)
 
-        self._set_baud_rate(baudrate)
+        self._set_baud_rate()
 
         # intialize TX and RX registers
         for idx in range(14):
@@ -317,9 +319,9 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         )
 
         self._mod_register(_RXB1CTRL, _RXB_RX_MASK, _RXB_RX_STDEXT)
-        if loopback:
+        if self.loopback:
             new_mode = _MODE_LOOPBACK
-        elif silent:
+        elif self.silent:
             new_mode = _MODE_LISTENONLY
         else:
             new_mode = _MODE_NORMAL
@@ -608,15 +610,14 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         self._mod_register(_CANINTF, tx_buffer.INT_FLAG_MASK, 0)
         return tx_buffer
 
-    def _set_baud_rate(self, baudrate=500000):
+    def _set_baud_rate(self):
 
         # *******8 set baud rate ***********
-        cnf1, cnf2, cnf3 = _BAUD_RATES[baudrate]
+        cnf1, cnf2, cnf3 = _BAUD_RATES[self.baudrate]
 
         self._set_register(_CNF1, cnf1)
         self._set_register(_CNF2, cnf2)
         self._set_register(_CNF3, cnf3)
-        self._baudrate = baudrate
         sleep(0.010)
 
     def _reset(self):
@@ -789,20 +790,17 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
     @property
     def error_warning_state_count(self):
-        """ The number of times the controller enterted the Error Warning state (read-only). This\
-             number wraps around to 0 after an implementation-defined number of errors."""
+        """Not supported by hardware. Raises an `AttributeError` if called"""
         raise AttributeError("`error_warning_state_count` not supported by hardware")
 
     @property
     def error_passive_state_count(self):
-        """ The number of times the controller enterted the Error Passive state (read-only). This\
-             number wraps around to 0 after an implementation-defined number of errors."""
+        """Not supported by hardware. Raises an `AttributeError` if called"""
         raise AttributeError("`error_passive_state_count` not supported by hardware")
 
     @property
     def bus_off_state_count(self):
-        """ The number of times the controller enterted the Bus Off state (read-only). This number\
-             wraps around to 0 after an implementation-defined number of errors."""
+        """Not supported by hardware. Raises an `AttributeError` if called"""
         raise AttributeError("`bus_off_state_count` not supported by hardware")
 
     @property
@@ -814,16 +812,16 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
     @property
     def loopback(self):  # bool
         """True if the device was created in loopback mode, False otherwise. (read-only)"""
-        return self._mode == _MODE_LOOPBACK
+        return self._loopback
 
     @property
     def silent(self):  # bool
         """True if the device was created in silent mode, False otherwise. (read-only)"""
-        return self._mode == _MODE_LISTENONLY
+        return self._silent
 
     def restart(self):
         """If the device is in the bus off state, restart it."""
-        self.initialize(self.baudrate, self.loopback, self.silent)
+        self.initialize()
 
     def listen(self, matches=None, *, timeout: float = 10):
         """Start receiving messages that match any one of the filters.

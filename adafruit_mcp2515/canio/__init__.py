@@ -93,6 +93,10 @@ class Listener:
     def receive(self):
         """Receives a message. If after waiting up to self.timeout seconds if no message is\
         received, None is returned. Otherwise, a Message is returned."""
+        if self._can_bus_obj is None:
+            raise ValueError(
+                "Object has been deinitialized and can no longer be used. Create a new object."
+            )
         self._timer.rewind_to(self.timeout)
         while not self._timer.expired:
             if self._can_bus_obj.unread_message_count == 0:
@@ -102,6 +106,10 @@ class Listener:
 
     def in_waiting(self):
         """Returns the number of messages waiting"""
+        if self._can_bus_obj is None:
+            raise ValueError(
+                "Object has been deinitialized and can no longer be used. Create a new object."
+            )
         return self._can_bus_obj.unread_message_count
 
     def __iter__(self):
