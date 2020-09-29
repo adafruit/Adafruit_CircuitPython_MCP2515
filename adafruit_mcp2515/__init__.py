@@ -90,6 +90,20 @@ _TX0IF = const(0x04)
 _TX1IF = const(0x08)
 _TX2IF = const(0x10)
 
+
+_RXF0SIDH = const(0x00)
+_RXF1SIDH = const(0x04)
+_RXF2SIDH = const(0x08)
+_RXF3SIDH = const(0x10)
+_RXF4SIDH = const(0x14)
+_RXF5SIDH = const(0x18)
+
+
+_RXM0SIDH = const(0x20)
+_RXM1SIDH = const(0x24)
+
+MASKS = [_RXM0SIDH, _RXM1SIDH]
+FILTERS = [_RXF0SIDH, _RXF1SIDH, _RXF2SIDH, _RXF3SIDH, _RXF4SIDH, _RXF5SIDH]
 # bits/flags
 _RX0IF = const(0x01)
 _RX1IF = const(0x02)
@@ -108,9 +122,14 @@ _TXB_TXREQ_M = const(0x08)  # TX request/completion bit
 # 0b 00011111 111111 [00 00000000 00000000] -> bottom 18
 # 0b 00011111 11111100 00000000 00000000]
 # 0b00011111111111000000000000000000 0x1ffc0000
-EXTID_TOP_11_MASK = 0x1FFC0000
-
+EXTID_TOP_11_WRITE_MASK = 0x1FFC0000
 EXTID_TOP_11_READ_MASK = 0xFFE00000
+
+EXTID_BOTTOM_29_MASK = (1 << 29) - 1  # bottom 18 bits
+EXTID_BOTTOM_18_MASK = (1 << 18) - 1  # bottom 18 bits
+STDID_BOTTOM_11_MASK = 0x7FF
+
+EXTID_FLAG_MASK = 1 << 19
 # CANINTF Register Bits
 
 # masks
@@ -130,7 +149,6 @@ _STAT_TX2_PENDING = const(0x40)
 
 _STAT_TX_PENDING_MASK = const(_STAT_TX0_PENDING | _STAT_TX1_PENDING | _STAT_TX2_PENDING)
 
-EXTID_BOTTOM_18_MASK = (1 << 18) - 1  # bottom 18 bits
 _SEND_TIMEOUT_MS = const(5)  # 500ms
 _MAX_CAN_MSG_LEN = 8  # ?!
 # perhaps this will be stateful later?
@@ -144,7 +162,10 @@ ReceiveBuffer = namedtuple(
     "TransmitBuffer",
     ["CTRL_REG", "STD_ID_REG", "INT_FLAG_MASK", "LOAD_CMD", "SEND_CMD"],
 )
-
+# perhaps this will be stateful later? #TODO : dedup with above
+FilterMask = namedtuple(
+    "FilterMask", ["CTRL_REG", "STD_ID_REG", "INT_FLAG_MASK", "LOAD_CMD", "SEND_CMD"],
+)
 
 _BAUD_RATES = {
     1000000: (0x00, 0xD0, 0x82),
@@ -191,7 +212,7 @@ def _tx_buffer_status_decode(status_byte):
     return out_str
 
 
-class MCP2515:
+class MCP2515:  # pylint:disable=too-many-instance-attributes
     """Library for the MCP2515 CANbus controller"""
 
     def __init__(
@@ -230,7 +251,10 @@ class MCP2515:
         self._buffer = bytearray(255)
         self._id_buffer = bytearray(4)
         self._unread_message_queue = []
+        self._timer = Timer()
         self._tx_buffers = []
+        self._masks_in_use = []
+        self._filters_in_use = []
         self._mode = None
 
         self._init_buffers()
@@ -267,10 +291,7 @@ class MCP2515:
 
         self._reset()
         # our mode set skips checking for sleep
-        res = self._set_mode(_MODE_CONFIG)
-        if not res:
-            raise RuntimeError("Unable to set config mode")
-        # SET MODE (FAILABLE)
+        self._set_mode(_MODE_CONFIG)
 
         self._set_baud_rate(baudrate)
 
@@ -299,13 +320,15 @@ class MCP2515:
         else:
             new_mode = _MODE_NORMAL
 
-        res = self._set_mode(new_mode)
-        if not res:
-            raise RuntimeError("Unable to set mode")
-        return res
+        self._set_mode(new_mode)
 
     def send(self, message_obj, wait_sent=True):  # pylint:disable=too-many-arguments
-        """send a message buffer"""
+        """Send a message on the bus with the given data and id. If the message could not be sent
+         due to a full fifo or a bus error condition, RuntimeError is raised.
+
+        Args:
+            message (canio.Message): The message to send. Must be a valid `canio.Message`
+        """
         # TODO: Timeout
         tx_buff = self._get_tx_buffer()  # info = addr.
 
@@ -365,9 +388,8 @@ class MCP2515:
             spi.readinto(self._buffer, end=15)
         ######### Unpack IDs/ set Extended #######
 
-
         raw_ids = unpack_from(">I", self._buffer)[0]
-        is_extended, sender_id = self._unload_ids(raw_ids)
+        extended, sender_id = self._unload_ids(raw_ids)
         ############# Length/RTR Size #########
         dlc = self._buffer[4]
         # length is max 8
@@ -375,13 +397,13 @@ class MCP2515:
 
         if (dlc & _RTR_MASK) > 0:
             frame_obj = RemoteTransmissionRequest(
-                sender_id, message_length, extended=is_extended_id
+                sender_id, message_length, extended=extended
             )
         else:
             frame_obj = Message(
                 sender_id,
                 data=bytes(self._buffer[5 : 5 + message_length]),
-                extended=is_extended_id,
+                extended=extended,
             )
 
         self._unread_message_queue.append(frame_obj)
@@ -465,58 +487,106 @@ class MCP2515:
                 in_end=1,
             )
 
-    def _set_mask_register(self, register):
-        
-    def _unload_ids(self, raw_ids):
+    def _set_filter_register(self, filter_index, mask, extended):
+        filter_reg_addr = FILTERS[filter_index]
+        self._write_id_to_register(filter_reg_addr, mask, extended)
+
+    def _set_mask_register(self, mask_index, mask, extended):
+        mask_reg_addr = MASKS[mask_index]
+        self._write_id_to_register(mask_reg_addr, mask, extended)
+
+    @staticmethod
+    def _unload_ids(raw_ids):
         """In=> 32-bit int packed with (StdID or ExTID top11  + bot18)+ extid bit
         out=> id, extended flag"""
-        is_extended_id = (raw_ids & _TXB_EXIDE_M_16 << 16) > 0
+        extended = (raw_ids & _TXB_EXIDE_M_16 << 16) > 0
         # std id field is most significant 11 bits of 4 bytes of id registers
         top_chunk = raw_ids & EXTID_TOP_11_READ_MASK
-        if is_extended_id:
+        if extended:
             # get bottom 18
             bottom_chunk = raw_ids & EXTID_BOTTOM_18_MASK
-            top_chunk = top_chunk
             # shift the top chunk back down 3 to start/end at bit 28=29th
             top_chunk >>= 3
             sender_id = top_chunk | bottom_chunk
         else:
             # shift down the  3 [res+extid+res]+18 extid bits
             sender_id = top_chunk >> (18 + 3)
-        return (is_extended, sender_id)
-    def _load_id_buffer(self, send_id, extended=False):
+        return (extended, sender_id)
+
+    def _print_id_buffer(self):
+        for idx, value in enumerate(self._id_buffer):
+            print("[{idx:d}] 0x{id:02X} {id:#010b}".format(id=value, idx=idx))
+
+    def _load_id_buffer(self, can_id, extended=False, set_extended_bit=None):
         self._id_buffer[0] = 0
         self._id_buffer[1] = 0
         self._id_buffer[2] = 0
         self._id_buffer[3] = 0
+        if set_extended_bit is None:
+            set_extended_bit = extended
 
         if extended:
-            extended_id = send_id
-
-            extid_bottom_18 = extended_id & EXTID_BOTTOM_18_MASK  # bottom 18 bits
-
-            pack_into(">I", self._id_buffer, 0, extid_bottom_18)
-
-            # need to set top of buffer[1], so get the current lsbyte
-            extid_msbits = self._id_buffer[1]
-            # get the next 2 bytes of the given ID
-
-            stdid_reg_bytes = (extended_id & EXTID_TOP_11_MASK) >> 16  ## top two bytes
-            # 0b00011111 11111100 < -- two empty bits for top to of 18 bit bottom chunk
-            # now we need to shift up 3 to take up the empty top 3 bytes
-            stdid_reg_bytes <<= 3
-            # finally we OR the top 11 + 3[ res+ EXTID+res] + 2 top of bottom chunk = 16
-            ms_bytes = stdid_reg_bytes | _TXB_EXIDE_M_16 | extid_msbits
-            # pack into first two/ 2 most sig bytes
-            pack_into(">H", self._id_buffer, 0, ms_bytes)
+            extended_id = can_id
+            # mask off top 11
+            high_11 = extended_id & EXTID_TOP_11_WRITE_MASK
+            # mask off bottom 18
+            low_18 = extended_id & EXTID_BOTTOM_18_MASK
+            # shift up high piece to fill MSBits and make space for extended flag
+            high_11 <<= 3
+            # or 'em together!
+            extended_id_shifted = high_11 | low_18
+            # set dat FLAG
+            final_id = extended_id_shifted
 
         else:
-            self._dbg("normal ID")
-            # TODO: dry with the above
-            std_id = send_id & 0x7FF  # The actual ID?
-            self._dbg("\tStd: ID", hex(std_id))
-            pack_into(">H", self._id_buffer, 0, std_id << 5)
-            self._dbg("\tID Buffer:", self._id_buffer)
+            std_id = can_id & STDID_BOTTOM_11_MASK  # The actual ID?
+            # shift up to fit all 4 bytes
+            final_id = std_id << (16 + 5)
+
+        if set_extended_bit:
+            final_id |= EXTID_FLAG_MASK
+
+        top = (final_id & EXTID_TOP_11_READ_MASK) >> 21
+        flags = (final_id & (0x7 << 18)) >> 18
+        bottom = final_id & EXTID_BOTTOM_18_MASK
+        print(
+            "final final_id: 0b{top:011b} {flags:03b} {bottom:018b}".format(
+                top=top, flags=flags, bottom=bottom
+            )
+        )
+        print("\n")
+        pack_into(">I", self._id_buffer, 0, final_id)
+
+    def _write_id_to_register(self, register, can_id, extended=False):
+        # load register in to ID buffer
+
+        current_mode = self._mode
+        self._set_mode(_MODE_CONFIG)
+        # set the mask in the ID buffer
+        # def _load_id_buffer(can_id, extended=False, set_extended_bit=None):
+
+        self._load_id_buffer(can_id, extended, set_extended_bit=False)
+
+        self._print_id_buffer()
+        # write with buffer
+        with self.bus_device_obj as spi:
+            # send write command for the given bufferf
+            self._buffer[0] = _WRITE
+            self._buffer[1] = register
+            # spi.write(self._buffer, end=1)
+            spi.write_readinto(
+                self._buffer,  # because the reference does similar
+                self._buffer,
+                out_start=0,
+                out_end=2,
+                in_start=0,
+                in_end=2,
+            )
+
+            # send id bytes
+            spi.write(self._id_buffer, end=4)
+
+        self._set_mode(current_mode)
 
     @property
     def _tx_buffers_in_use(self):
@@ -567,11 +637,16 @@ class MCP2515:
         current_mode = stat_reg & _MODE_MASK
 
         if current_mode == mode:
-            return True
-        new_mode_set = self._request_new_mode(mode)
-        if new_mode_set:
-            self._mode = mode
-        return new_mode_set
+            return
+        self._timer.rewind_to(5)
+        while not self._timer.expired:
+
+            new_mode_set = self._request_new_mode(mode)
+            if new_mode_set:
+                self._mode = mode
+                return
+
+        raise RuntimeError("Unable to change mode")
 
     def _request_new_mode(self, mode):
         start_time_ns = monotonic_ns()
@@ -677,7 +752,7 @@ class MCP2515:
     def restart(self):
         """If the device is in the bus off state, restart it."""
 
-    def listen(self, match=None, *, timeout: float = 10):
+    def listen(self, matches=None, *, timeout: float = 10):
         """Start receiving messages that match any one of the filters.
 
         Creating a listener is an expensive operation and can interfere with reception of messages
@@ -694,7 +769,7 @@ class MCP2515:
 
     An empty filter list causes all messages to be accepted.
 
-    Timeout dictates how long `receive()` and `next()` will block.
+    Timeout dictates how long ``receive()`` and ``next()`` will block.
 
         Args:
             match (Optional[Sequence[Match]], optional): [description]. Defaults to None.
@@ -703,20 +778,43 @@ class MCP2515:
         Returns:
             Listener: [description]
         """
-        # set up masks/filters
-        self._dbg("match:", match)
+
+        if matches:
+            for match in matches:
+                self._dbg("match:", match)
+                if match.mask > 0:
+                    self._create_mask(match.extended, match.mask)
+                else:
+                    # if no mask, match exactly so mask every bit
+                    self._create_mask(match.extended)
+                self._create_filter(match.address, match.extended)
         return Listener(self, timeout)
 
-    # def send(self, message):
-    #     """Send a message on the bus with the given data and id. If the message could not be sent
-    #      due to a full fifo or a bus error condition, RuntimeError is raised.
+        # allocate filter
 
-    #     Args:
-    #         message (canio.Message): The message to send. Must be a valid `canio.Message`
-    #     """
-    #     self.send_buffer(
-    #         message.data, message.id, extended_id=message.extended, rtr=message.rtr
-    #     )
+    def _create_filter(self, id_match, extended):
+        used_filter_count = len(self._filters_in_use)
+        if used_filter_count == len(FILTERS):
+            raise RuntimeError("No Filters Available")
+
+        next_filter_index = used_filter_count
+        self._set_filter_register(next_filter_index, id_match, extended)
+        self._filters_in_use.append(FILTERS[next_filter_index])
+
+    def _create_mask(self, extended, mask=None):
+        if mask is None:
+            if extended:
+                mask = EXTID_BOTTOM_29_MASK
+            else:
+                mask = STDID_BOTTOM_11_MASK
+
+        masks_used = len(self._masks_in_use)
+        if masks_used < len(MASKS):
+            next_mask = masks_used
+            self._set_mask_register(next_mask, mask, extended)
+            self._masks_in_use.append(MASKS[next_mask])
+        else:
+            raise RuntimeError("No Masks Available")
 
     def deinit(self):
         """Deinitialize this object, freeing its hardware resources"""

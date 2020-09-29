@@ -50,8 +50,7 @@ class Message:
 
 
 class RemoteTransmissionRequest:
-    """RRTTTTRRRR
-    """
+    """RRTTTTRRRR """
 
     def __init__(self, id: int, length: int, *, extended: bool = False):
         """Construct a Message to send on a CAN bus
@@ -115,6 +114,7 @@ class Listener:
 
     def deinit(self):
         """Deinitialize this object, freeing its hardware resources"""
+        # unset filters and masks
 
     def __enter__(self):
         """Returns self, to allow the object to be used in a The with statement statement for\
