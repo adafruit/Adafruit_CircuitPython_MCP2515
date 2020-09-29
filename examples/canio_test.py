@@ -135,74 +135,6 @@ def test_rtr_receive(can=builtin_bus_factory):
             assert mi.data == data
 
 
-def test_mcp_standard_id_exact_filters(can=builtin_bus_factory):
-
-    print("Test MCP Standard ID filters")
-    standard_matches = [
-        Match(0x408),
-        Match(max_standard_id),
-    ]
-
-    with can() as b, b.listen(standard_matches, timeout=0.1) as l:
-        # exact ID matching
-        mo = RemoteTransmissionRequest(id=0x408, length=0)
-        b.send(mo)
-        mi = l.receive()
-        assert mi
-
-        # # mask matching
-        mo = RemoteTransmissionRequest(id=max_standard_id, length=0)
-        b.send(mo)
-        mi = l.receive()
-        assert mi
-
-        # non-matching
-        mo = RemoteTransmissionRequest(id=0x409, length=0)
-        b.send(mo)
-        mi = l.receive()
-        assert not mi, "ID 0x409 not blocked by filters & masks"
-
-        # non-matching
-        mo = RemoteTransmissionRequest(id=(max_standard_id - 1), length=0)
-        b.send(mo)
-        mi = l.receive()
-        assert not mi, "ID %x not blocked by filters & masks" % (max_standard_id - 1)
-
-
-def test_mcp_extended_id_exact_filters(can=builtin_bus_factory):
-    print("Test MCP Extended ID filters")
-    extended_matches = [
-        Match(0x4081975, extended=True),
-        Match(max_extended_id, extended=True),
-    ]
-
-    with can() as b, b.listen(extended_matches, timeout=0.1) as l:
-        # Extended
-        # exact ID matching
-        mo = Message(id=0x4081975, extended=True, data=b"")
-        b.send(mo)
-        mi = l.receive()
-        assert mi, "Exact extended filter match blocked"
-
-        # mask matching
-        mo = Message(id=max_extended_id, extended=True, data=b"")
-        b.send(mo)
-        mi = l.receive()
-        assert mi
-
-        # non-matching
-        mo = Message(id=0x4081985, extended=True, data=b"")
-        b.send(mo)
-        mi = l.receive()
-        assert not mi
-
-        # non-matching
-        mo = Message(id=(max_extended_id - 1), extended=True, data=b"")
-        b.send(mo)
-        mi = l.receive()
-        assert not mi, "ID %x not blocked by filters & masks" % (max_extended_id - 1)
-
-
 def test_filters1(can=builtin_bus_factory):
 
     matches = [
@@ -340,6 +272,108 @@ def test_iter(can=builtin_bus_factory):
             print("StopIteration")
 
 
+def test_mcp_standard_id_exact_filters(can=builtin_bus_factory):
+
+    print("Test MCP Standard ID filters")
+    standard_matches = [
+        Match(0x408),
+        Match(max_standard_id),
+    ]
+
+    with can() as b, b.listen(standard_matches, timeout=0.1) as l:
+        # exact ID matching
+        mo = RemoteTransmissionRequest(id=0x408, length=0)
+        b.send(mo)
+        mi = l.receive()
+        assert mi
+
+        # # mask matching
+        mo = RemoteTransmissionRequest(id=max_standard_id, length=0)
+        b.send(mo)
+        mi = l.receive()
+        assert mi
+
+        # non-matching
+        mo = RemoteTransmissionRequest(id=0x409, length=0)
+        b.send(mo)
+        mi = l.receive()
+        assert not mi, "ID 0x409 not blocked by filters & masks"
+
+        # non-matching
+        mo = RemoteTransmissionRequest(id=(max_standard_id - 1), length=0)
+        b.send(mo)
+        mi = l.receive()
+        assert not mi, "ID %x not blocked by filters & masks" % (max_standard_id - 1)
+
+
+def test_mcp_standard_id_masked_filters(can=builtin_bus_factory):
+
+    print("Test MCP Standard ID masked filters")
+    standard_matches = [
+        Match(0x400, mask=0x7F0),  # should allow 0x40*
+        Match(0x70A, mask=0x70F),  # should allow 0x7*A
+    ]
+
+    with can() as b, b.listen(standard_matches, timeout=0.1) as l:
+        # masked matching
+        mo = RemoteTransmissionRequest(id=0x408, length=0)
+        b.send(mo)
+        mi = l.receive()
+        assert mi, "ID 0x408 not blocked by masked filter"
+
+        # # non-matching
+        mo = RemoteTransmissionRequest(id=0x418, length=0)
+        b.send(mo)
+        mi = l.receive()
+        assert not mi, "ID 0x418 not blocked by masked filter"
+
+        # masked matching
+        mo = RemoteTransmissionRequest(id=0x7FA, length=0)
+        b.send(mo)
+        mi = l.receive()
+        assert mi, "ID 0x7FA blocked by masked filter"
+
+        # non-matching
+        mo = RemoteTransmissionRequest(id=0x7FB, length=0)
+        b.send(mo)
+        mi = l.receive()
+        assert not mi, "ID 0x7FB not blocked by masked filter"
+
+
+def test_mcp_extended_id_exact_filters(can=builtin_bus_factory):
+    print("Test MCP Extended ID filters")
+    extended_matches = [
+        Match(0x4081975, extended=True),
+        Match(max_extended_id, extended=True),
+    ]
+
+    with can() as b, b.listen(extended_matches, timeout=0.1) as l:
+        # Extended
+        # exact ID matching
+        mo = Message(id=0x4081975, extended=True, data=b"")
+        b.send(mo)
+        mi = l.receive()
+        assert mi, "Exact extended filter match blocked"
+
+        # mask matching
+        mo = Message(id=max_extended_id, extended=True, data=b"")
+        b.send(mo)
+        mi = l.receive()
+        assert mi
+
+        # non-matching
+        mo = Message(id=0x4081985, extended=True, data=b"")
+        b.send(mo)
+        mi = l.receive()
+        assert not mi
+
+        # non-matching
+        mo = Message(id=(max_extended_id - 1), extended=True, data=b"")
+        b.send(mo)
+        mi = l.receive()
+        assert not mi, "ID %x not blocked by filters & masks" % (max_extended_id - 1)
+
+
 test_suite = [
     test_message,
     test_rtr_constructor,
@@ -352,11 +386,21 @@ if CAN_TYPE == "SAM-E":
     test_suite.append(test_filters2)
 elif CAN_TYPE == "MCP2515":
     test_suite.append(test_mcp_standard_id_exact_filters)
+    test_suite.append(test_mcp_standard_id_masked_filters)
     test_suite.append(test_mcp_extended_id_exact_filters)
+
+failures = []
 for test in test_suite:
     try:
         test()
-    except Exception as e:  # pylint:disable=broad-except
-        print(e)
-        print("\n***************** FAILURE ***************")
-print("\n*********** PASS ***************")
+    except AssertionError as e:
+        failures.append(e)
+if failures:
+    print("\n***************** FAILURES ***************")
+    from sys import print_exception  # pylint:disable=no-name-in-module
+
+    for failure in failures:
+        print("*** Failed: ***")
+        print_exception(failure)
+else:
+    print("\n*********** PASS ***************")

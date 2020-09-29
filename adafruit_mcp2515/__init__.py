@@ -103,7 +103,7 @@ _RXM0SIDH = const(0x20)
 _RXM1SIDH = const(0x24)
 
 MASKS = [_RXM0SIDH, _RXM1SIDH]
-FILTERS = [_RXF0SIDH, _RXF1SIDH, _RXF2SIDH, _RXF3SIDH, _RXF4SIDH, _RXF5SIDH]
+FILTERS = [[_RXF0SIDH, _RXF1SIDH], [_RXF2SIDH, _RXF3SIDH, _RXF4SIDH, _RXF5SIDH]]
 # bits/flags
 _RX0IF = const(0x01)
 _RX1IF = const(0x02)
@@ -254,7 +254,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         self._timer = Timer()
         self._tx_buffers = []
         self._masks_in_use = []
-        self._filters_in_use = []
+        self._filters_in_use = [[], []]
         self._mode = None
 
         self._init_buffers()
@@ -766,43 +766,53 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         Returns:
             Listener: [description]
         """
+        if matches is None:
+            matches = []
 
-        if matches:
-            for match in matches:
-                self._dbg("match:", match)
-                if match.mask > 0:
-                    self._create_mask(match.extended, match.mask)
-                else:
-                    # if no mask, match exactly so mask every bit
-                    self._create_mask(match.extended)
-                self._create_filter(match.address, match.extended)
+        for match in matches:
+            self._dbg("match:", match)
+            mask_index_used = self._create_mask(match)
+            self._create_filter(match, mask_index=mask_index_used)
+
+        used_masks = len(self._masks_in_use)
+        # if matches were made and there are unused masks
+        # set the unused masks to prevent them from leaking packets
+        if len(matches) > 0 and used_masks < len(MASKS):
+            next_mask_index = used_masks
+            for idx in range(next_mask_index, len(MASKS)):
+                print("using unused mask index:", idx)
+                self._create_mask(matches[-1])
+
         return Listener(self, timeout)
 
-        # allocate filter
-
-    def _create_filter(self, id_match, extended):
-        used_filter_count = len(self._filters_in_use)
-        if used_filter_count == len(FILTERS):
-            raise RuntimeError("No Filters Available")
-
-        next_filter_index = used_filter_count
-        self._set_filter_register(next_filter_index, id_match, extended)
-        self._filters_in_use.append(FILTERS[next_filter_index])
-
-    def _create_mask(self, extended, mask=None):
-        if mask is None:
-            if extended:
+    def _create_mask(self, match):
+        mask = match.mask
+        if mask == 0:
+            if match.extended:
                 mask = EXTID_BOTTOM_29_MASK
             else:
                 mask = STDID_BOTTOM_11_MASK
 
         masks_used = len(self._masks_in_use)
         if masks_used < len(MASKS):
-            next_mask = masks_used
-            self._set_mask_register(next_mask, mask, extended)
-            self._masks_in_use.append(MASKS[next_mask])
-        else:
-            raise RuntimeError("No Masks Available")
+            next_mask_index = masks_used
+
+            self._set_mask_register(next_mask_index, mask, match.extended)
+            self._masks_in_use.append(MASKS[next_mask_index])
+            return next_mask_index
+
+        raise RuntimeError("No Masks Available")
+
+    def _create_filter(self, match, mask_index):
+
+        next_filter_index = len(self._filters_in_use[mask_index])
+        if next_filter_index == len(FILTERS[mask_index]):
+            raise RuntimeError("No Filters Available")
+
+        filter_register = FILTERS[mask_index][next_filter_index]
+
+        self._write_id_to_register(filter_register, match.address, match.extended)
+        self._filters_in_use[mask_index].append(filter_register)
 
     def deinit(self):
         """Deinitialize this object, freeing its hardware resources"""
