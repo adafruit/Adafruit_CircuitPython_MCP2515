@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2020 Jeff Epler for Adafruit Industries
 #
 # SPDX-License-Identifier: MIT
-
+CAN_TYPE = None
 try:
     from canio import (
         Message,
@@ -10,6 +10,8 @@ try:
         # BusState,
     )
     from board import CAN_RX, CAN_TX
+
+    CAN_TYPE = "SAM-E"
 
     def builtin_bus_factory():
         return CAN(rx=CAN_RX, tx=CAN_TX, baudrate=1000000, loopback=True)
@@ -27,7 +29,10 @@ except ImportError as e:
         Match,
         # BusState,
     )
+
     from adafruit_mcp2515 import MCP2515 as CAN
+
+    CAN_TYPE = "MCP2515"
 
     def builtin_bus_factory():
         cs = DigitalInOut(board.D5)
@@ -130,7 +135,7 @@ def test_rtr_receive(can=builtin_bus_factory):
             assert mi.data == data
 
 
-def test_mcp_standard_id_filters(can=builtin_bus_factory):
+def test_mcp_standard_id_exact_filters(can=builtin_bus_factory):
 
     print("Test MCP Standard ID filters")
     standard_matches = [
@@ -164,7 +169,7 @@ def test_mcp_standard_id_filters(can=builtin_bus_factory):
         assert not mi, "ID %x not blocked by filters & masks" % (max_standard_id - 1)
 
 
-def test_mcp_extended_id_filters(can=builtin_bus_factory):
+def test_mcp_extended_id_exact_filters(can=builtin_bus_factory):
     print("Test MCP Extended ID filters")
     extended_matches = [
         Match(0x4081975, extended=True),
@@ -336,14 +341,22 @@ def test_iter(can=builtin_bus_factory):
 
 
 test_suite = [
-    # test_message,
-    # test_rtr_constructor,
-    # test_rtr_receive,
-    test_mcp_standard_id_filters,
-    test_mcp_extended_id_filters,
-    # test_filters1,
-    # test_filters2,
-    # test_iter,
+    test_message,
+    test_rtr_constructor,
+    test_rtr_receive,
+    test_iter,
 ]
+# set filter tests
+if CAN_TYPE == "SAM-E":
+    test_suite.append(test_filters1)
+    test_suite.append(test_filters2)
+elif CAN_TYPE == "MCP2515":
+    test_suite.append(test_mcp_standard_id_exact_filters)
+    test_suite.append(test_mcp_extended_id_exact_filters)
 for test in test_suite:
-    test()
+    try:
+        test()
+    except Exception as e:  # pylint:disable=broad-except
+        print(e)
+        print("\n***************** FAILURE ***************")
+print("\n*********** PASS ***************")

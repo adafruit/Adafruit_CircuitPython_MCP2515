@@ -513,17 +513,11 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
             sender_id = top_chunk >> (18 + 3)
         return (extended, sender_id)
 
-    def _print_id_buffer(self):
-        for idx, value in enumerate(self._id_buffer):
-            print("[{idx:d}] 0x{id:02X} {id:#010b}".format(id=value, idx=idx))
-
-    def _load_id_buffer(self, can_id, extended=False, set_extended_bit=None):
+    def _load_id_buffer(self, can_id, extended=False):
         self._id_buffer[0] = 0
         self._id_buffer[1] = 0
         self._id_buffer[2] = 0
         self._id_buffer[3] = 0
-        if set_extended_bit is None:
-            set_extended_bit = extended
 
         if extended:
             extended_id = can_id
@@ -535,26 +529,22 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
             high_11 <<= 3
             # or 'em together!
             extended_id_shifted = high_11 | low_18
+            final_id = extended_id_shifted | EXTID_FLAG_MASK
             # set dat FLAG
-            final_id = extended_id_shifted
 
         else:
             std_id = can_id & STDID_BOTTOM_11_MASK  # The actual ID?
             # shift up to fit all 4 bytes
             final_id = std_id << (16 + 5)
 
-        if set_extended_bit:
-            final_id |= EXTID_FLAG_MASK
-
-        top = (final_id & EXTID_TOP_11_READ_MASK) >> 21
-        flags = (final_id & (0x7 << 18)) >> 18
-        bottom = final_id & EXTID_BOTTOM_18_MASK
-        print(
-            "final final_id: 0b{top:011b} {flags:03b} {bottom:018b}".format(
-                top=top, flags=flags, bottom=bottom
-            )
-        )
-        print("\n")
+        # top = (final_id & EXTID_TOP_11_READ_MASK) >> 21
+        # flags = (final_id & (0x7 << 18)) >> 18
+        # bottom = final_id & EXTID_BOTTOM_18_MASK
+        # print(
+        #     "final final_id: 0b{top:011b} {flags:03b} {bottom:018b}".format(
+        #         top=top, flags=flags, bottom=bottom
+        #     )
+        # )
         pack_into(">I", self._id_buffer, 0, final_id)
 
     def _write_id_to_register(self, register, can_id, extended=False):
@@ -563,11 +553,9 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         current_mode = self._mode
         self._set_mode(_MODE_CONFIG)
         # set the mask in the ID buffer
-        # def _load_id_buffer(can_id, extended=False, set_extended_bit=None):
 
-        self._load_id_buffer(can_id, extended, set_extended_bit=False)
+        self._load_id_buffer(can_id, extended)
 
-        self._print_id_buffer()
         # write with buffer
         with self.bus_device_obj as spi:
             # send write command for the given bufferf
