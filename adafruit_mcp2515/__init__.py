@@ -90,6 +90,10 @@ _TX0IF = const(0x04)
 _TX1IF = const(0x08)
 _TX2IF = const(0x10)
 
+# Filters & Masks
+_RXM0SIDH = const(0x20)
+_RXM1SIDH = const(0x24)
+MASKS = [_RXM0SIDH, _RXM1SIDH]
 
 _RXF0SIDH = const(0x00)
 _RXF1SIDH = const(0x04)
@@ -97,31 +101,17 @@ _RXF2SIDH = const(0x08)
 _RXF3SIDH = const(0x10)
 _RXF4SIDH = const(0x14)
 _RXF5SIDH = const(0x18)
-
-
-_RXM0SIDH = const(0x20)
-_RXM1SIDH = const(0x24)
-
-MASKS = [_RXM0SIDH, _RXM1SIDH]
 FILTERS = [[_RXF0SIDH, _RXF1SIDH], [_RXF2SIDH, _RXF3SIDH, _RXF4SIDH, _RXF5SIDH]]
 # bits/flags
 _RX0IF = const(0x01)
 _RX1IF = const(0x02)
-# _TX0IF = const(0x04)
-# _TX1IF = const(0x08)
-# _TX2IF = const(0x10)
-# _ERRIF = const(0x20)
 _WAKIF = const(0x40)
 # _MERRF = const(0x80)
 
+# Standard/Extended ID Buffers, Masks, Flags
 _TXB_EXIDE_M_16 = const(0x08)
 _TXB_TXREQ_M = const(0x08)  # TX request/completion bit
 
-# 29 bits -18 bottm = 11 remaining:
-# 0b 00011111 111111 [11 11111111 11111111] -> bottom 18
-# 0b 00011111 111111 [00 00000000 00000000] -> bottom 18
-# 0b 00011111 11111100 00000000 00000000]
-# 0b00011111111111000000000000000000 0x1ffc0000
 EXTID_TOP_11_WRITE_MASK = 0x1FFC0000
 EXTID_TOP_11_READ_MASK = 0xFFE00000
 
@@ -129,8 +119,9 @@ EXTID_BOTTOM_29_MASK = (1 << 29) - 1  # bottom 18 bits
 EXTID_BOTTOM_18_MASK = (1 << 18) - 1  # bottom 18 bits
 STDID_BOTTOM_11_MASK = 0x7FF
 
-EXTID_FLAG_MASK = 1 << 19
-# CANINTF Register Bits
+EXTID_FLAG_MASK = (
+    1 << 19
+)  # to set/get the "is an extended id?" flag from a 4-byte ID buffer
 
 # masks
 _MODE_MASK = const(0xE0)
@@ -149,6 +140,15 @@ _STAT_TX2_PENDING = const(0x40)
 
 _STAT_TX_PENDING_MASK = const(_STAT_TX0_PENDING | _STAT_TX1_PENDING | _STAT_TX2_PENDING)
 
+###### Bus State and Error Counts ##########
+
+# TEC: TRANSMIT ERROR COUNTER REGISTER (ADDRESS: 1Ch)
+_TEC = const(0x1C)
+_REC = const(0x1D)
+# REC: RECEIVE ERROR COUNTER REGISTER (ADDRESS: 1Dh)
+_EFLG = const(0x2D)
+
+############ Misc Consts #########
 _SEND_TIMEOUT_MS = const(5)  # 500ms
 _MAX_CAN_MSG_LEN = 8  # ?!
 # perhaps this will be stateful later?
@@ -246,19 +246,23 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
             raise AttributeError("only loopback or silent mode can bet set, not both")
         self._auto_restart = auto_restart
         self._debug = debug
-        self.bus_device_obj = spi_device.SPIDevice(spi_bus, cs_pin)
+        self._bus_device_obj = spi_device.SPIDevice(spi_bus, cs_pin)
         self._cs_pin = cs_pin
         self._buffer = bytearray(255)
         self._id_buffer = bytearray(4)
         self._unread_message_queue = []
         self._timer = Timer()
         self._tx_buffers = []
+        self._rx0_overflow = False
+        self._rx1_overflow = False
         self._masks_in_use = []
         self._filters_in_use = [[], []]
         self._mode = None
+        self._bus_state = BusState.ERROR_ACTIVE
+        self._baudrate = baudrate
 
         self._init_buffers()
-        self.initialize(baudrate, loopback=loopback, silent=silent)
+        self.initialize(baudrate, loopback, silent)
 
     def _init_buffers(self):
 
@@ -286,7 +290,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
             ),
         ]
 
-    def initialize(self, baudrate, loopback=False, silent=False):
+    def initialize(self, baudrate, loopback, silent):
         """Return the sensor to the default configuration"""
 
         self._reset()
@@ -374,7 +378,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
     def _read_rx_buffer(self, read_command):
         # read from buffer
-        with self.bus_device_obj as spi:
+        with self._bus_device_obj as spi:
             self._buffer[0] = read_command
             spi.write_readinto(
                 self._buffer,  # because the reference does similar
@@ -445,7 +449,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         # this splits up the id header, dlc (len, rtr status), and message buffer
         # TODO: check if we can send in one buffer, in which case `id_buffer` isn't needed
 
-        with self.bus_device_obj as spi:
+        with self._bus_device_obj as spi:
             # send write command for the given buffer
             self._buffer[0] = load_command
             # spi.write(self._buffer, end=1)
@@ -477,7 +481,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
     def _start_transmit(self, tx_buffer):
         #
         self._buffer[0] = tx_buffer.SEND_CMD
-        with self.bus_device_obj as spi:
+        with self._bus_device_obj as spi:
             spi.write_readinto(
                 self._buffer,  # because the reference does similar
                 self._buffer,
@@ -557,7 +561,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         self._load_id_buffer(can_id, extended)
 
         # write with buffer
-        with self.bus_device_obj as spi:
+        with self._bus_device_obj as spi:
             # send write command for the given bufferf
             self._buffer[0] = _WRITE
             self._buffer[1] = register
@@ -612,11 +616,12 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         self._set_register(_CNF1, cnf1)
         self._set_register(_CNF2, cnf2)
         self._set_register(_CNF3, cnf3)
+        self._baudrate = baudrate
         sleep(0.010)
 
     def _reset(self):
         self._buffer[0] = _RESET
-        with self.bus_device_obj as spi:
+        with self._bus_device_obj as spi:
             spi.write(self._buffer, end=1)
         sleep(0.010)
 
@@ -660,14 +665,14 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         self._buffer[1] = register_addr
         self._buffer[2] = mask
         self._buffer[3] = new_value
-        with self.bus_device_obj as spi:
+        with self._bus_device_obj as spi:
             spi.write(self._buffer, end=4)
 
     def _read_register(self, regsiter_addr):
         self._buffer[0] = _READ
         self._buffer[1] = regsiter_addr
 
-        with self.bus_device_obj as spi:
+        with self._bus_device_obj as spi:
             spi.write(self._buffer, end=2)
             self._buffer[0] = 0
             spi.write_readinto(
@@ -678,7 +683,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
     def _read_status(self):
         self._buffer[0] = _READ_STATUS
-        with self.bus_device_obj as spi:
+        with self._bus_device_obj as spi:
             spi.write(self._buffer, end=1)
             spi.readinto(self._buffer, start=0, end=1)
         return self._buffer[0]
@@ -687,14 +692,75 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         self._buffer[0] = _WRITE
         self._buffer[1] = regsiter_addr
         self._buffer[2] = register_value
-        with self.bus_device_obj as spi:
+        with self._bus_device_obj as spi:
             spi.write(self._buffer, end=3)
 
-    ######## CANIO API METHODS #############
+    def _get_bus_status(self):
+        """Get the status flags that report the state of the bus"""
+        bus_flags = self._read_register(_EFLG)
 
+        flags = []
+        for idx in range(8):
+            bit_mask = 1 << idx
+            flags.append((bus_flags & bit_mask) > 0)
+        (  # pylint:disable=unbalanced-tuple-unpacking
+            error_warn,
+            _rx_error_warn,
+            _tx_err_warn,
+            rx_error_passive,
+            tx_error_passive,
+            buss_off,
+            self._rx0_overflow,
+            self._rx1_overflow,
+        ) = flags
+        if self._rx0_overflow or self._rx0_overflow:
+            self._mod_register(
+                _EFLG, 0xC0, 0
+            )  # clear overflow bits now that we've recorded them
+
+        if buss_off:
+            self._bus_state = BusState.BUS_OFF
+        elif tx_error_passive or rx_error_passive:
+            self._bus_state = BusState.ERROR_PASSIVE
+        elif error_warn:
+            self._bus_state = BusState.ERROR_WARNING
+        else:
+            self._bus_state = BusState.ERROR_ACTIVE
+
+    def _create_mask(self, match):
+        mask = match.mask
+        if mask == 0:
+            if match.extended:
+                mask = EXTID_BOTTOM_29_MASK
+            else:
+                mask = STDID_BOTTOM_11_MASK
+
+        masks_used = len(self._masks_in_use)
+        if masks_used < len(MASKS):
+            next_mask_index = masks_used
+
+            self._set_mask_register(next_mask_index, mask, match.extended)
+            self._masks_in_use.append(MASKS[next_mask_index])
+            return next_mask_index
+
+        raise RuntimeError("No Masks Available")
+
+    def _create_filter(self, match, mask_index):
+
+        next_filter_index = len(self._filters_in_use[mask_index])
+        if next_filter_index == len(FILTERS[mask_index]):
+            raise RuntimeError("No Filters Available")
+
+        filter_register = FILTERS[mask_index][next_filter_index]
+
+        self._write_id_to_register(filter_register, match.address, match.extended)
+        self._filters_in_use[mask_index].append(filter_register)
+
+    ######## CANIO API METHODS #############
     @property
     def baudrate(self):
         """ The baud rate (read-only)"""
+        return self._baudrate
 
     @property
     def transmit_error_count(self):
@@ -725,20 +791,23 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
     @property
     def state(self):  # State
-        """The current state of the bus. """
+        """The current state of the bus. (read-only) """
+        self._get_bus_status()
+        return self._bus_state
 
     @property
     def loopback(self):  # bool
-        """True if the device was created in loopback mode, False otherwise"""
+        """True if the device was created in loopback mode, False otherwise. (read-only)"""
         return self._mode == _MODE_LOOPBACK
 
     @property
     def silent(self):  # bool
-        """True if the device was created in silent mode, False otherwise"""
+        """True if the device was created in silent mode, False otherwise. (read-only)"""
         return self._mode == _MODE_LISTENONLY
 
     def restart(self):
         """If the device is in the bus off state, restart it."""
+        self.initialize(self.baudrate, self.loopback, self.silent)
 
     def listen(self, matches=None, *, timeout: float = 10):
         """Start receiving messages that match any one of the filters.
@@ -784,35 +853,6 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
                 self._create_mask(matches[-1])
 
         return Listener(self, timeout)
-
-    def _create_mask(self, match):
-        mask = match.mask
-        if mask == 0:
-            if match.extended:
-                mask = EXTID_BOTTOM_29_MASK
-            else:
-                mask = STDID_BOTTOM_11_MASK
-
-        masks_used = len(self._masks_in_use)
-        if masks_used < len(MASKS):
-            next_mask_index = masks_used
-
-            self._set_mask_register(next_mask_index, mask, match.extended)
-            self._masks_in_use.append(MASKS[next_mask_index])
-            return next_mask_index
-
-        raise RuntimeError("No Masks Available")
-
-    def _create_filter(self, match, mask_index):
-
-        next_filter_index = len(self._filters_in_use[mask_index])
-        if next_filter_index == len(FILTERS[mask_index]):
-            raise RuntimeError("No Filters Available")
-
-        filter_register = FILTERS[mask_index][next_filter_index]
-
-        self._write_id_to_register(filter_register, match.address, match.extended)
-        self._filters_in_use[mask_index].append(filter_register)
 
     def deinit(self):
         """Deinitialize this object, freeing its hardware resources"""

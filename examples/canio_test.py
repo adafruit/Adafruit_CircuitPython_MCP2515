@@ -7,7 +7,7 @@ try:
         Message,
         RemoteTransmissionRequest,
         Match,
-        # BusState,
+        BusState,
     )
     from board import CAN_RX, CAN_TX
 
@@ -27,7 +27,7 @@ except ImportError as e:
         Message,
         RemoteTransmissionRequest,
         Match,
-        # BusState,
+        BusState,
     )
 
     from adafruit_mcp2515 import MCP2515 as CAN
@@ -408,11 +408,24 @@ def test_mcp_extended_id_masked_filters(can=builtin_bus_factory):
         assert not mi, "ID %x not blocked by filters & masks" % (max_extended_id - 1)
 
 
+def test_bus_state(can=builtin_bus_factory):
+    print("Test `BusState` support")
+
+    with can() as b:
+        assert b.state in [
+            BusState.BUS_OFF,
+            BusState.ERROR_PASSIVE,
+            BusState.ERROR_WARNING,
+            BusState.ERROR_ACTIVE,
+        ]
+
+
 test_suite = [
     test_message,
     test_rtr_constructor,
     test_rtr_receive,
     test_iter,
+    test_bus_state,
 ]
 # set filter tests
 if CAN_TYPE == "SAM-E":
