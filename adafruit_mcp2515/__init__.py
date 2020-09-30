@@ -5,7 +5,8 @@
 `adafruit_mcp2515`
 ================================================================================
 
-A CircuitPython library for working with the MCP2515 CAN bus controller
+A CircuitPython library for working with the MCP2515 CAN bus controller using the
+CircuitPython `canio` API
 
 
 * Author(s): Bryan Siepert
@@ -20,8 +21,7 @@ Implementation Notes
 * Adafruit CircuitPython firmware for the supported boards:
   https://github.com/adafruit/circuitpython/releases
 
-# * Adafruit's Bus Device library: https://github.com/adafruit/Adafruit_CircuitPython_BusDevice
-# * Adafruit's Register library: https://github.com/adafruit/Adafruit_CircuitPython_Register
+* Adafruit's Bus Device library: https://github.com/adafruit/Adafruit_CircuitPython_BusDevice
 """
 
 from collections import namedtuple
@@ -30,6 +30,7 @@ from time import sleep
 from micropython import const
 import adafruit_bus_device.spi_device as spi_device
 from .canio import *
+from .timer import Timer
 
 __version__ = "0.0.0-auto.0"
 __repo__ = "https://github.com/adafruit/Adafruit_CircuitPython_MCP2515.git"
@@ -162,12 +163,11 @@ ReceiveBuffer = namedtuple(
     "TransmitBuffer",
     ["CTRL_REG", "STD_ID_REG", "INT_FLAG_MASK", "LOAD_CMD", "SEND_CMD"],
 )
-# perhaps this will be stateful later? #TODO : dedup with above
-FilterMask = namedtuple(
-    "FilterMask", ["CTRL_REG", "STD_ID_REG", "INT_FLAG_MASK", "LOAD_CMD", "SEND_CMD"],
-)
 
+# This is magic, don't disturb the dragon
+# expects a 16Mhz crystal
 _BAUD_RATES = {
+    # CNF1, CNF2, CNF3
     1000000: (0x00, 0xD0, 0x82),
     500000: (0x00, 0xF0, 0x86),
     250000: (0x41, 0xF1, 0x85),
@@ -209,7 +209,24 @@ def _tx_buffer_status_decode(status_byte):
 
 
 class MCP2515:  # pylint:disable=too-many-instance-attributes
-    """Library for the MCP2515 CANbus controller"""
+    """
+    A common shared-bus protocol.
+
+    :param ~busio.SPI spi: The SPI bus used to communicate with the MCP2515
+    :param ~digitalio.DigitalInOut cs_pin:  SPI bus enable pin
+    :param int baudrate: The bit rate of the bus in Hz, using a 16Mhz crystal. All devices on\
+        the bus must agree on this value. Defaults to 250000.
+    :param bool loopback: Receive only packets sent from this device, and send only to\
+        this device. Requires that `silent` is also set to `False`, but only prevents\
+        transimssion to other devices. Otherwise the send/receive behavior is normal.
+    :param bool silent:When `True` the controller does not transmit and all messages\
+        are received, ignoring errors and filters. This mode can be used to “sniff” a CAN\
+        bus without interfering. Defaults to `False`.
+    :param bool auto_restart: **Not supported by hardware. An `AttributeError`
+        will be raised if `auto_restart` is set to `True`** If `True`, will restart\
+        communications after entering bus-off state. Defaults to `False`.
+    :param bool debug: If `True`, will enable printing debug information. Defaults to `False`.
+    """
 
     def __init__(
         self,
@@ -222,24 +239,12 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         auto_restart: bool = False,
         debug: bool = False
     ):
-        """[summary]
 
-        Args:
-            spi_bus (busio.SPI): The SPI bus used to communicate with the MCP2515
-            cs_pin (digitalio.DigitalInOut): SPI bus enable pin
-            baudrate (int, optional):  The bit rate of the bus in Hz. All devices on the bus must \
-                agree on this value. Defaults to 250000.
-            loopback (bool, optional): When True the rx pin’s value is ignored, and the device \
-                receives the packets it sends. Defaults to False.
-            silent (bool, optional): When True the tx pin is always driven to the high logic level.\
-                 This mode can be used to “sniff” a CAN bus without interfering.. Defaults to False.
-            auto_restart (bool, optional): If True, will restart communications after entering \
-                bus-off state. Defaults to False.
-            debug (bool, optional): If True, will enable printing debug information. Defaults to \
-                False.
-        """
-        if loopback and silent:
-            raise AttributeError("only loopback or silent mode can bet set, not both")
+        if loopback and not silent:
+            raise AttributeError("Loopback mode requires silent to be set")
+        if auto_restart:
+            raise AttributeError("`auto-restart` is not supported by hardware")
+
         self._auto_restart = auto_restart
         self._debug = debug
         self._bus_device_obj = spi_device.SPIDevice(spi_bus, cs_pin)
@@ -331,6 +336,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         Args:
             message (canio.Message): The message to send. Must be a valid `canio.Message`
         """
+
         # TODO: Timeout
         tx_buff = self._get_tx_buffer()  # info = addr.
 
@@ -350,7 +356,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
             if send_confirmed:
                 return True
 
-        raise RuntimeError("Timeout occoured waiting for transmit confirmation")
+        raise RuntimeError("Timeout occurred waiting for transmit confirmation")
 
     @property
     def unread_message_count(self):
@@ -830,7 +836,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
     An empty filter list causes all messages to be accepted.
 
-    Timeout dictates how long ``receive()`` and ``next()`` will block.
+    Timeout dictates how long ``receive()`` will block.
 
         Args:
             match (Optional[Sequence[Match]], optional): [description]. Defaults to None.
@@ -841,6 +847,11 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         """
         if matches is None:
             matches = []
+        elif self.silent and not self.loopback:
+            raise AttributeError(
+                "Hardware does not support setting `matches` in when\
+                `silent`==`True` and `loopback` == `False`"
+            )
 
         for match in matches:
             self._dbg("match:", match)

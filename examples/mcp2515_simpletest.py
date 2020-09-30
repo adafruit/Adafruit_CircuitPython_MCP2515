@@ -1,25 +1,31 @@
 # SPDX-FileCopyrightText: Copyright (c) 2020 Bryan Siepert for Adafruit Industries
 #
 # SPDX-License-Identifier: MIT
-
 from time import sleep
-from board import SPI, D5 as CS_PIN
-import digitalio
-import adafruit_mcp2515
+import board
+import busio
+from digitalio import DigitalInOut
 from adafruit_mcp2515.canio import Message
+from adafruit_mcp2515 import MCP2515 as CAN
 
-cs = digitalio.DigitalInOut(CS_PIN)
+
+cs = DigitalInOut(board.D5)
 cs.switch_to_output()
-mcp = adafruit_mcp2515.MCP2515(SPI(), cs)
+spi = busio.SPI(board.SCK, board.MOSI, board.MISO)
 
-max_ext_id = 0x3FFFF
-mb1 = [0xDE, 0xAD, 0xBE, 0xEF]
-mb2 = [0xCA, 0xFE, 0xFA, 0xDE]
-can_id = 0b100000000000000001
+can_bus = CAN(
+    spi, cs, loopback=True, silent=True
+)  # use loopback to test without another device
 while True:
-    mb1.insert(0, mb2.pop())
-    mb2.insert(0, mb1.pop())
-    message = Message(id=0xFFAA, data=bytes(mb1 + mb2), extended=True)
-    mcp.send(message)
-    sleep(0.3)
-    print("*" * 40)
+    with can_bus.listen(timeout=1.0) as listener:
+
+        message = Message(id=0x1234ABCD, data=b"adafruit", extended=True)
+        can_bus.send(message)
+        message_count = listener.in_waiting()
+        print(message_count, "messages available")
+        for _i in range(message_count):
+            msg = listener.receive()
+            print("Message from ", hex(msg.id))
+            print("message data:", msg.data)
+            print("")
+    sleep(1)
