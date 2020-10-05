@@ -209,24 +209,7 @@ def _tx_buffer_status_decode(status_byte):
 
 
 class MCP2515:  # pylint:disable=too-many-instance-attributes
-    """
-    A common shared-bus protocol.
-
-    :param ~busio.SPI spi: The SPI bus used to communicate with the MCP2515
-    :param ~digitalio.DigitalInOut cs_pin:  SPI bus enable pin
-    :param int baudrate: The bit rate of the bus in Hz, using a 16Mhz crystal. All devices on\
-        the bus must agree on this value. Defaults to 250000.
-    :param bool loopback: Receive only packets sent from this device, and send only to\
-        this device. Requires that `silent` is also set to `False`, but only prevents\
-        transimssion to other devices. Otherwise the send/receive behavior is normal.
-    :param bool silent:When `True` the controller does not transmit and all messages\
-        are received, ignoring errors and filters. This mode can be used to “sniff” a CAN\
-        bus without interfering. Defaults to `False`.
-    :param bool auto_restart: **Not supported by hardware. An `AttributeError`
-        will be raised if `auto_restart` is set to `True`** If `True`, will restart\
-        communications after entering bus-off state. Defaults to `False`.
-    :param bool debug: If `True`, will enable printing debug information. Defaults to `False`.
-    """
+    """A common shared-bus protocol."""
 
     def __init__(
         self,
@@ -239,6 +222,18 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         auto_restart: bool = False,
         debug: bool = False
     ):
+        """A common shared-bus protocol.
+        :param ~busio.SPI spi: The SPI bus used to communicate with the MCP2515
+        :param ~digitalio.DigitalInOut cs_pin:  SPI bus enable pin
+        :param int baudrate: The bit rate of the bus in Hz, using a 16Mhz crystal. All devices on the bus must agree on this value. Defaults to 250000.
+        :param bool loopback: Receive only packets sent from this device, and send only to this device. Requires that `silent` is also set to `False`, but only prevents transmission to other devices. Otherwise the send/receive behavior is normal.
+        :param bool silent: When `True` the controller does not transmit and all messages are received, ignoring errors and filters. This mode can be used to “sniff” a CAN bus without interfering. Defaults to `False`.
+        :param bool auto_restart: **Not supported by hardware. An `AttributeError` will be raised if `auto_restart` is set to `True`**
+
+            If `True`, will restart\ communications after entering bus-off state. Defaults to `False`.
+
+        :param bool debug: If `True`, will enable printing debug information. Defaults to `False`.
+        """
 
         if loopback and not silent:
             raise AttributeError("Loopback mode requires silent to be set")
@@ -329,7 +324,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
         self._set_mode(new_mode)
 
-    def send(self, message_obj, wait_sent=True):
+    def send(self, message_obj):
         """Send a message on the bus with the given data and id. If the message could not be sent
          due to a full fifo or a bus error condition, RuntimeError is raised.
 
@@ -339,24 +334,10 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
         # TODO: Timeout
         tx_buff = self._get_tx_buffer()  # info = addr.
+        if tx_buff is None:
+            raise RuntimeError("No transmit buffer available to send")
 
-        # TODO: set buffer priority
-        self._write_message(tx_buff, message_obj)
-        if not wait_sent:
-            return True
-        sleep(0.010)
-
-        send_confirmed = False
-        self._timer.rewind_to(0.005)
-        while not self._timer.expired:
-            # the status register address is whatever tx_buff_n is, minus one?
-            tx_buff_status = self._read_register(tx_buff.CTRL_REG)
-            self._dbg(_tx_buffer_status_decode(tx_buff_status))
-            send_confirmed = (tx_buff_status & _TXB_TXREQ_M) == 0
-            if send_confirmed:
-                return True
-
-        raise RuntimeError("Timeout occurred waiting for transmit confirmation")
+        return self._write_message(tx_buff, message_obj)
 
     @property
     def unread_message_count(self):
@@ -433,6 +414,8 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
     def _write_message(self, tx_buffer, message_obj):
 
+        if tx_buffer is None:
+            raise RuntimeError("No transmit buffer available to send")
         if isinstance(message_obj, RemoteTransmissionRequest):
             dlc = message_obj.length
         else:
@@ -477,6 +460,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
         # send the frame based on the current buffers
         self._start_transmit(tx_buffer)
+        return True
 
     # TODO: Priority
     def _start_transmit(self, tx_buffer):
