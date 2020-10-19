@@ -223,14 +223,20 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         debug: bool = False
     ):
         """A common shared-bus protocol.
+
         :param ~busio.SPI spi: The SPI bus used to communicate with the MCP2515
         :param ~digitalio.DigitalInOut cs_pin:  SPI bus enable pin
-        :param int baudrate: The bit rate of the bus in Hz, using a 16Mhz crystal. All devices on the bus must agree on this value. Defaults to 250000.
-        :param bool loopback: Receive only packets sent from this device, and send only to this device. Requires that `silent` is also set to `False`, but only prevents transmission to other devices. Otherwise the send/receive behavior is normal.
-        :param bool silent: When `True` the controller does not transmit and all messages are received, ignoring errors and filters. This mode can be used to “sniff” a CAN bus without interfering. Defaults to `False`.
-        :param bool auto_restart: **Not supported by hardware. An `AttributeError` will be raised if `auto_restart` is set to `True`**
-
-            If `True`, will restart\ communications after entering bus-off state. Defaults to `False`.
+        :param int baudrate: The bit rate of the bus in Hz, using a 16Mhz crystal. All devices on\
+            the bus must agree on this value. Defaults to 250000.
+        :param bool loopback: Receive only packets sent from this device, and send only to this\
+        device. Requires that `silent` is also set to `True`, but only prevents transmission to\
+        other devices. Otherwise the send/receive behavior is normal.
+        :param bool silent: When `True` the controller does not transmit and all messages are\
+        received, ignoring errors and filters. This mode can be used to “sniff” a CAN bus without\
+        interfering. Defaults to `False`.
+        :param bool auto_restart: **Not supported by hardware. An `AttributeError` will be raised\
+        if `auto_restart` is set to `True`** If `True`, will restart communications after entering\
+        bus-off state. Defaults to `False`.
 
         :param bool debug: If `True`, will enable printing debug information. Defaults to `False`.
         """
@@ -244,7 +250,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         self._debug = debug
         self._bus_device_obj = spi_device.SPIDevice(spi_bus, cs_pin)
         self._cs_pin = cs_pin
-        self._buffer = bytearray(255)
+        self._buffer = bytearray(20)
         self._id_buffer = bytearray(4)
         self._unread_message_queue = []
         self._timer = Timer()
@@ -362,6 +368,9 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         return self._unread_message_queue.pop(0)
 
     def _read_rx_buffer(self, read_command):
+        for i in len(self._buffer):
+            self._buffer[i] = 0
+
         # read from buffer
         with self._bus_device_obj as spi:
             self._buffer[0] = read_command
@@ -394,7 +403,6 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
                 data=bytes(self._buffer[5 : 5 + message_length]),
                 extended=extended,
             )
-
         self._unread_message_queue.append(frame_obj)
 
     def _read_from_rx_buffers(self):

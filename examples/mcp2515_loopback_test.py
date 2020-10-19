@@ -20,7 +20,7 @@ from adafruit_mcp2515 import MCP2515 as CAN
 def bus():
     cs = DigitalInOut(CS_PIN)
     cs.switch_to_output()
-    return CAN(SPI(), cs, loopback=True)
+    return CAN(SPI(), cs, loopback=True, silent=True)
 
 
 mb1 = [0xDE, 0xAD, 0xBE, 0xEF]

@@ -12,10 +12,11 @@ from adafruit_mcp2515 import MCP2515 as CAN
 cs = digitalio.DigitalInOut(board.D5)
 cs.switch_to_output()
 spi = busio.SPI(board.SCK, board.MOSI, board.MISO)
-mcp = CAN(spi, cs)
+mcp = CAN(spi, cs, silent=True)
 
 t = Timer(timeout=5)
-
+next_message = None
+message_num = 0
 while True:
     # print occationally to show we're alive
     if t.expired:
@@ -26,15 +27,20 @@ while True:
 
         if message_count == 0:
             continue
-        for _i in range(message_count):
-            print(message_count, "messages available")
-            msg = listener.receive()
-            print("Message received from ", hex(msg.id))
+
+        next_message = listener.receive()
+        message_num = 0
+        while not next_message is None:
+            message_num += 1
+
+            msg = next_message
+            print("ID:", hex(msg.id), end=",")
             if isinstance(msg, Message):
-                print("Message data:", msg.data)
-                message_str = "::".join(["0x{:02X}".format(i) for i in msg.data])
-                print(message_str)
+                if len(msg.data) > 0:
+                    print("Data:", end="")
+                    message_str = ",".join(["0x{:02X}".format(i) for i in msg.data])
+                    print(message_str)
 
             if isinstance(msg, RemoteTransmissionRequest):
-                print("RTR length:", msg.length)
-            print("")
+                print("RTR_LEN:", msg.length)
+            next_message = listener.receive()
