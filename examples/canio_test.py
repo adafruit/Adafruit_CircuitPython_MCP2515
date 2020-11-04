@@ -1,6 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2020 Jeff Epler for Adafruit Industries
 #
 # SPDX-License-Identifier: MIT
+
+###################### Board/ Config selection #################
+# This is is only on way to make this test work for other boards.
+# As an alternative, CAN_TYPE could be set manually and
+# board-specific expectations can be if/else'd, and support for a
+# new CAN controller or peripheral would start with defining the
+# controller-specifc bits
+
 CAN_TYPE = None
 try:
     from canio import (
@@ -37,8 +45,10 @@ except ImportError as e:
     def builtin_bus_factory():
         cs = DigitalInOut(board.D5)
         cs.switch_to_output()
-        return CAN(board.SPI(), cs, baudrate=1000000, loopback=True)
+        return CAN(board.SPI(), cs, baudrate=1000000, loopback=True, silent=True)
 
+
+################################################################
 
 max_standard_id = 0x7FF
 max_extended_id = 0x1FFFFFFF

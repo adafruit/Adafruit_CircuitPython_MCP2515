@@ -4,11 +4,11 @@
 """Python implementation of the CircuitPython core `canio` API"""
 # pylint:disable=too-few-public-methods, invalid-name, redefined-builtin
 import time
+from ..timer import Timer
 
 
 class Message:
-    """A class representing a message to send on a `canio` bus
-    """
+    """A class representing a CANbus data frame"""
 
     # pylint:disable=too-many-arguments,invalid-name,redefined-builtin
     def __init__(self, id, data, extended=False):
@@ -50,10 +50,10 @@ class Message:
 
 
 class RemoteTransmissionRequest:
-    """RRTTTTRRRR """
+    """A class representing a CANbus remote frame"""
 
     def __init__(self, id: int, length: int, *, extended: bool = False):
-        """Construct a Message to send on a CAN bus
+        """Construct a RemoteTransmissionRequest to send on a CAN bus
 
         Args:
             id (int): The numeric ID of the requested message
@@ -205,29 +205,3 @@ class Match:
         self.address = address
         self.mask = mask
         self.extended = extended
-
-
-############# non-api classes and methods
-class Timer:
-    """A class to track timeouts, like an egg timer
-    """
-
-    def __init__(self, timeout=0.0):
-        self._timeout = None
-        self._start_time = None
-        if timeout:
-            self.rewind_to(timeout)
-
-    @property
-    def expired(self):
-        """Returns the expiration status of the timer
-
-        Returns:
-            bool: True if more than `timeout` seconds has past since it was set
-        """
-        return (time.monotonic() - self._start_time) > self._timeout
-
-    def rewind_to(self, new_timeout):
-        """Re-wind the timer to a new timeout and start ticking"""
-        self._timeout = float(new_timeout)
-        self._start_time = time.monotonic()
