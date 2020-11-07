@@ -368,7 +368,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         return self._unread_message_queue.pop(0)
 
     def _read_rx_buffer(self, read_command):
-        for i in len(self._buffer):
+        for i in range(len(self._buffer)):
             self._buffer[i] = 0
 
         # read from buffer
