@@ -166,6 +166,7 @@ ReceiveBuffer = namedtuple(
     ["CTRL_REG", "STD_ID_REG", "INT_FLAG_MASK", "LOAD_CMD", "SEND_CMD"],
 )
 
+
 def _tx_buffer_status_decode(status_byte):
     out_str = "Status: "
     # when CAN_H is disconnected?: 0x18
@@ -299,7 +300,9 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         self._set_register(_CANINTE, _RX0IF | _RX1IF)
         sleep(0.010)
         self._mod_register(
-            _RXB0CTRL, _RXB_RX_MASK | _RXB_BUKT_MASK, _RXB_RX_STDEXT | _RXB_BUKT_MASK,
+            _RXB0CTRL,
+            _RXB_RX_MASK | _RXB_BUKT_MASK,
+            _RXB_RX_STDEXT | _RXB_BUKT_MASK,
         )
 
         self._mod_register(_RXB1CTRL, _RXB_RX_MASK, _RXB_RX_STDEXT)
@@ -594,8 +597,8 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
             self._baudrate.TimingConstants.MCP251x_16Const()
         ):
             raise ValueError(
-                'Unable to calculate timing registers for '
-                'the interface with the given baudrate.'
+                "Unable to calculate timing registers for "
+                "the interface with the given baudrate."
             )
 
         self._set_register(_CNF1, self._baudrate.cnf1)

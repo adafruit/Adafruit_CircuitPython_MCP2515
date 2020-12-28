@@ -35,6 +35,7 @@ class _TimingConst(object):
     and the approptiate values set to properly calculate the timing registers
     for that interface family.
     """
+
     tseg1_min = 4
     tseg1_max = 16
     tseg2_min = 2
@@ -95,6 +96,7 @@ class TimingConstants(object):
     """
     Constants used to calculate the timing registers
     """
+
     class MCP251x16Const(_MCP251xConst):
         fsys = 16000000
 
@@ -202,19 +204,20 @@ class Bitrate(object):
     performance hit each time a synchronization occurs so it is ideal to keep the
     bitrate as close as possible to the network bitrate.
     """
+
     TimingConstants = TimingConstants
 
     sync_seg = 1
 
     def __init__(
-            self,
-            bitrate,
-            sample_point: Optional[Union[int, float]] = None,
-            sjw: int = 1,
-            number_of_samples: int = 1,
-            calc_tolerance: float = 2.0,
-            bus_length: int = 1,
-            transceiver_delay: int = 150
+        self,
+        bitrate,
+        sample_point: Optional[Union[int, float]] = None,
+        sjw: int = 1,
+        number_of_samples: int = 1,
+        calc_tolerance: float = 2.0,
+        bus_length: int = 1,
+        transceiver_delay: int = 150,
     ):
         """
 
@@ -330,10 +333,7 @@ class Bitrate(object):
 
     @staticmethod
     def _calculate_bitrates(
-        nominal_bitrate,
-        calc_tolerance,
-        cia_compliant,
-        timing_const
+        nominal_bitrate, calc_tolerance, cia_compliant, timing_const
     ):
 
         tmp = timing_const.fsys / nominal_bitrate / 2
@@ -351,19 +351,14 @@ class Bitrate(object):
                     err = round(err * 1e4) / 1e4
 
                     bitrate = int(round(nominal_bitrate * (1 - err)))
-                    br_err = (
-                        abs(bitrate - nominal_bitrate) /
-                        nominal_bitrate
-                    ) * 100
+                    br_err = (abs(bitrate - nominal_bitrate) / nominal_bitrate) * 100
 
                     if br_err > calc_tolerance:
                         continue
 
                     for sjw in range(1, 5):
                         br = Bitrate(
-                            nominal_bitrate,
-                            sjw=sjw,
-                            calc_tolerance=calc_tolerance
+                            nominal_bitrate, sjw=sjw, calc_tolerance=calc_tolerance
                         )
 
                         br._bitrate = bitrate
@@ -374,8 +369,7 @@ class Bitrate(object):
                         br._brp_extension = timing_const.brp_extension
 
                         if not (
-                            cia_compliant or
-                            (cia_compliant and br.is_cis_sample_point)
+                            cia_compliant or (cia_compliant and br.is_cis_sample_point)
                         ):
                             yield br
 
@@ -384,7 +378,7 @@ class Bitrate(object):
         nominal_bitrate: int,
         timing_const: _TimingConst,
         cia_compliant: bool = False,
-        calc_tolerance: float = 0.0
+        calc_tolerance: float = 0.0,
     ):
         """
         Enumerates all timing registers available for a given bitrate.
@@ -404,12 +398,11 @@ class Bitrate(object):
         :rtype: generator
 
         """
-        return iter(Bitrate._calculate_bitrates(
-            nominal_bitrate,
-            calc_tolerance,
-            cia_compliant,
-            timing_const
-        ))
+        return iter(
+            Bitrate._calculate_bitrates(
+                nominal_bitrate, calc_tolerance, cia_compliant, timing_const
+            )
+        )
 
     def __can_calc_bittiming(self, timing_const):
         nominal_bitrate = self._nominal_bitrate
@@ -435,8 +428,7 @@ class Bitrate(object):
                     bitrate = int(round(nominal_bitrate * (1 - err)))
 
                     sp_err = (
-                        abs(sample_point - nominal_sample_point) /
-                        nominal_sample_point
+                        abs(sample_point - nominal_sample_point) / nominal_sample_point
                     ) * 100
                     br_err = (abs(bitrate - nominal_bitrate) / nominal_bitrate) * 100
 
@@ -446,8 +438,8 @@ class Bitrate(object):
                     tmp_match = (br_err, sp_err, bitrate, brp, tseg1, tseg2)
 
                     if (
-                            bitrate == nominal_bitrate and
-                            sample_point == nominal_sample_point
+                        bitrate == nominal_bitrate
+                        and sample_point == nominal_sample_point
                     ):
                         match = tmp_match
                         break
@@ -544,8 +536,8 @@ class Bitrate(object):
         :rtype: float
         """
         err = (
-            abs(self.sample_point - self.nominal_sample_point) /
-            self.nominal_sample_point
+            abs(self.sample_point - self.nominal_sample_point)
+            / self.nominal_sample_point
         ) * 100
         return err
 
@@ -927,9 +919,9 @@ class Bitrate(object):
             # can0bt='0x' + hex(self.can0bt)[2:].upper().zfill(8),
             # canbr='0x' + hex(self.canbr)[2:].upper().zfill(8),
             # canctrl='0x' + hex(self.canctrl)[2:].upper().zfill(8),
-            cnf1='0x' + hex(self.cnf1)[2:].upper().zfill(2),
-            cnf2='0x' + hex(self.cnf2)[2:].upper().zfill(2),
-            cnf3='0x' + hex(self.cnf3)[2:].upper().zfill(2),
+            cnf1="0x" + hex(self.cnf1)[2:].upper().zfill(2),
+            cnf2="0x" + hex(self.cnf2)[2:].upper().zfill(2),
+            cnf3="0x" + hex(self.cnf3)[2:].upper().zfill(2),
             # canbtc='0x' + hex(self.canbtc)[2:].upper().zfill(8),
             # cibcr='0x' + hex(self.cibcr)[2:].upper().zfill(8),
             # cxconr='0x' + hex(self.cxconr)[2:].upper().zfill(8),

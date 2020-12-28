@@ -14,4 +14,3 @@ cs = digitalio.DigitalInOut(board.D5)
 cs.switch_to_output()
 spi = busio.SPI(board.SCK, board.MOSI, board.MISO)
 mcp = CAN(spi, cs, baudrate=bitrate, silent=True)
-
