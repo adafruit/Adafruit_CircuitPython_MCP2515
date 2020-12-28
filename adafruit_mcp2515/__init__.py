@@ -27,10 +27,12 @@ Implementation Notes
 from collections import namedtuple
 from struct import unpack_from, pack_into
 from time import sleep
+from typing import Union
 from micropython import const
 import adafruit_bus_device.spi_device as spi_device
 from .canio import *
 from .timer import Timer
+from . import bitrate
 
 __version__ = "0.0.0-auto.0"
 __repo__ = "https://github.com/adafruit/Adafruit_CircuitPython_MCP2515.git"
@@ -164,31 +166,6 @@ ReceiveBuffer = namedtuple(
     ["CTRL_REG", "STD_ID_REG", "INT_FLAG_MASK", "LOAD_CMD", "SEND_CMD"],
 )
 
-# This is magic, don't disturb the dragon
-# expects a 16Mhz crystal
-_BAUD_RATES = {
-    # CNF1, CNF2, CNF3
-    1000000: (0x00, 0xD0, 0x82),
-    500000: (0x00, 0xF0, 0x86),
-    250000: (0x41, 0xF1, 0x85),
-    200000: (0x01, 0xFA, 0x87),
-    125000: (0x03, 0xF0, 0x86),
-    100000: (0x03, 0xFA, 0x87),
-    95000: (0x03, 0xAD, 0x07),
-    83300: (0x03, 0xBE, 0x07),
-    80000: (0x03, 0xFF, 0x87),
-    50000: (0x07, 0xFA, 0x87),
-    40000: (0x07, 0xFF, 0x87),
-    33000: (0x09, 0xBE, 0x07),
-    31250: (0x0F, 0xF1, 0x85),
-    25000: (0x0F, 0xBA, 0x07),
-    20000: (0x0F, 0xFF, 0x87),
-    10000: (0x1F, 0xFF, 0x87),
-    5000: (0x3F, 0xFF, 0x87),
-    666000: (0x00, 0xA0, 0x04),
-}
-
-
 def _tx_buffer_status_decode(status_byte):
     out_str = "Status: "
     # when CAN_H is disconnected?: 0x18
@@ -216,7 +193,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         spi_bus,
         cs_pin,
         *,
-        baudrate: int = 250000,
+        baudrate: Union[int, bitrate.Bitrate] = 250000,
         loopback: bool = False,
         silent: bool = False,
         auto_restart: bool = False,
@@ -226,8 +203,13 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
         :param ~busio.SPI spi: The SPI bus used to communicate with the MCP2515
         :param ~digitalio.DigitalInOut cs_pin:  SPI bus enable pin
-        :param int baudrate: The bit rate of the bus in Hz, using a 16Mhz crystal. All devices on\
+        :param baudrate: The bit rate of the bus in Hz, using a 16Mhz crystal. All devices on\
             the bus must agree on this value. Defaults to 250000.
+            This parameter can also be a bitrate.Bitrate instance, this allow for a more customizable
+            set of bit timing registers to be used for optimal network performance.
+
+        :type baudrate: int, bitrate.Bitrate
+
         :param bool loopback: Receive only packets sent from this device, and send only to this\
         device. Requires that `silent` is also set to `True`, but only prevents transmission to\
         other devices. Otherwise the send/receive behavior is normal.
@@ -604,11 +586,21 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
     def _set_baud_rate(self):
 
         # *******8 set baud rate ***********
-        cnf1, cnf2, cnf3 = _BAUD_RATES[self.baudrate]
 
-        self._set_register(_CNF1, cnf1)
-        self._set_register(_CNF2, cnf2)
-        self._set_register(_CNF3, cnf3)
+        if isinstance(self._baudrate, int):
+            self._baudrate = bitrate.Bitrate(self._baudrate)
+
+        if not self._baudrate.calc_bit_timing(
+            self._baudrate.TimingConstants.mcp251x_16Const()
+        ):
+            raise ValueError(
+                'Unable to calculate timing registers for '
+                'the interface with the given baudrate.'
+            )
+
+        self._set_register(_CNF1, self._baudrate.cnf1)
+        self._set_register(_CNF2, self._baudrate.cnf2)
+        self._set_register(_CNF3, self._baudrate.cnf3)
         sleep(0.010)
 
     def _reset(self):
@@ -758,8 +750,11 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
     ######## CANIO API METHODS #############
     @property
-    def baudrate(self):
+    def baudrate(self) -> bitrate.Bitrate:
         """ The baud rate (read-only)"""
+        if isinstance(self._baudrate, int):
+            self._baudrate = bitrate.Bitrate(self._baudrate)
+
         return self._baudrate
 
     @property
