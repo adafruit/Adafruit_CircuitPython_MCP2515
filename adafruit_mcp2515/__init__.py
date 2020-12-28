@@ -32,7 +32,7 @@ from micropython import const
 import adafruit_bus_device.spi_device as spi_device
 from .canio import *
 from .timer import Timer
-from . import bitrate
+from .bitrate import Bitrate
 
 __version__ = "0.0.0-auto.0"
 __repo__ = "https://github.com/adafruit/Adafruit_CircuitPython_MCP2515.git"
@@ -588,10 +588,10 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         # *******8 set baud rate ***********
 
         if isinstance(self._baudrate, int):
-            self._baudrate = bitrate.Bitrate(self._baudrate)
+            self._baudrate = Bitrate(self._baudrate)
 
         if not self._baudrate.calc_bit_timing(
-            self._baudrate.TimingConstants.mcp251x_16Const()
+            self._baudrate.TimingConstants.MCP251x_16Const()
         ):
             raise ValueError(
                 'Unable to calculate timing registers for '
@@ -750,10 +750,10 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
     ######## CANIO API METHODS #############
     @property
-    def baudrate(self) -> bitrate.Bitrate:
+    def baudrate(self) -> Bitrate:
         """ The baud rate (read-only)"""
         if isinstance(self._baudrate, int):
-            self._baudrate = bitrate.Bitrate(self._baudrate)
+            self._baudrate = Bitrate(self._baudrate)
 
         return self._baudrate
 
