@@ -54,5 +54,5 @@ setup(
     # simple. Or you can use find_packages().
     # TODO: IF LIBRARY FILES ARE A PACKAGE FOLDER,
     #       CHANGE `py_modules=['...']` TO `packages=['...']`
-    packages=find_packages(include=["adafruit_mcp2515", "adafruit_mcp2515.*"]),
+    packages=["adafruit_mcp2515", "adafruit_mcp2515.canio"],
 )
