@@ -317,7 +317,9 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         self._set_register(_CANINTE, _RX0IF | _RX1IF)
         sleep(0.010)
         self._mod_register(
-            _RXB0CTRL, _RXB_RX_MASK | _RXB_BUKT_MASK, _RXB_RX_STDEXT | _RXB_BUKT_MASK,
+            _RXB0CTRL,
+            _RXB_RX_MASK | _RXB_BUKT_MASK,
+            _RXB_RX_STDEXT | _RXB_BUKT_MASK,
         )
 
         self._mod_register(_RXB1CTRL, _RXB_RX_MASK, _RXB_RX_STDEXT)
