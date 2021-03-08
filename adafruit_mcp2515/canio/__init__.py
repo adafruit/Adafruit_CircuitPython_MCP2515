@@ -181,8 +181,7 @@ class BusState:
 
 
 class Match:
-    """A class representing an ID pattern to match against
-    """
+    """A class representing an ID pattern to match against"""
 
     def __init__(self, address: int, *, mask: int = 0, extended: bool = False):
         """Describe CAN bus messages to match
