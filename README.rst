@@ -72,6 +72,11 @@ Usage Example
     spi = busio.SPI(board.SCK, board.MOSI, board.MISO)
     mcp = adafruit_mcp2515.MCP2515(spi, cs)
 
+Documentation
+=============
+
+API documentation for this library can be found on `Read the Docs <https://circuitpython.readthedocs.io/projects/mcp2515/en/latest/>`_.
+
 Contributing
 ============
 
