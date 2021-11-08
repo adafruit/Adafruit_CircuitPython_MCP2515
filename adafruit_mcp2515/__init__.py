@@ -28,7 +28,7 @@ from collections import namedtuple
 from struct import unpack_from, pack_into
 from time import sleep
 from micropython import const
-import adafruit_bus_device.spi_device as spi_device
+from adafruit_bus_device import spi_device
 from .canio import *
 from .timer import Timer
 
@@ -370,7 +370,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         return self._unread_message_queue.pop(0)
 
     def _read_rx_buffer(self, read_command):
-        for i in range(len(self._buffer)):
+        for i in range(len(self._buffer)):  # pylint: disable=consider-using-enumerate
             self._buffer[i] = 0
 
         # read from buffer
