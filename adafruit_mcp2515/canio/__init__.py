@@ -154,7 +154,7 @@ class Listener:
 
 
 class BusState:
-    """The state of the CAN bus """
+    """The state of the CAN bus"""
 
     ERROR_ACTIVE = 0
     """The bus is in the normal (active) state"""

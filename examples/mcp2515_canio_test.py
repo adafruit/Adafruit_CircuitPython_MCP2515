@@ -24,7 +24,6 @@ try:
     def builtin_bus_factory():
         return CAN(rx=CAN_RX, tx=CAN_TX, baudrate=1000000, loopback=True)
 
-
 except ImportError as e:
     print("no native canio, trying mcp")
     from digitalio import DigitalInOut

@@ -761,7 +761,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
     ######## CANIO API METHODS #############
     @property
     def baudrate(self):
-        """ The baud rate (read-only)"""
+        """The baud rate (read-only)"""
         return self._baudrate
 
     @property
@@ -795,7 +795,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
     @property
     def state(self):  # State
-        """The current state of the bus. (read-only) """
+        """The current state of the bus. (read-only)"""
         self._get_bus_status()
         return self._bus_state
 
