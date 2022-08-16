@@ -12,7 +12,7 @@ requires = [
 [project]
 name = "adafruit-circuitpython-mcp2515"
 description = "A CircuitPython library for working with the MCP2515 CAN bus controller"
-version = "0.0.0-auto.0"
+version = "0.0.0+auto.0"
 readme = "README.rst"
 authors = [
     {name = "Adafruit Industries", email = "circuitpython@adafruit.com"}
