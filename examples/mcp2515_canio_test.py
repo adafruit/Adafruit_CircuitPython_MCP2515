@@ -12,6 +12,7 @@
 CAN_TYPE = None
 try:
     from canio import (
+        CAN,
         Message,
         RemoteTransmissionRequest,
         Match,
