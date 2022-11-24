@@ -189,10 +189,11 @@ _BAUD_RATES = {
         666000: (0x00, 0xA0, 0x04),
     },
     
-    # Values based on this calculator, for 8MHz, controller MCP2510: https://www.kvaser.com/support/calculators/bit-timing-calculator/
+    # Values based on this calculator, for 8MHz, controller MCP2510:
+    # https://www.kvaser.com/support/calculators/bit-timing-calculator/
     8000000: {
         # CNF1, CNF2, CNF3
-        1000000: (0x00, 0x91, 0x01), # seems it is not possible, so use the previous value of 500000
+        1000000: (0x00, 0x91, 0x01), # seems it is not possible, this values may be wrong
         500000: (0x00, 0x91, 0x01),
         250000: (0x40, 0xb5, 0x01),
         200000: (0x00, 0xb6, 0x04),
@@ -632,7 +633,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
     def _set_baud_rate(self):
         # ******* set baud rate ***********
-        if self._xtal_frequency is not 16000000 and self._xtal_frequency is not 8000000:
+        if self._xtal_frequency != 16000000 and self._xtal_frequency != 8000000:
             raise RuntimeError("Incorrect xtal frequency")
 
         cnf1, cnf2, cnf3 = _BAUD_RATES[self._xtal_frequency][self.baudrate]
