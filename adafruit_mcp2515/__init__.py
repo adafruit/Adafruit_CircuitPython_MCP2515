@@ -255,7 +255,8 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         :param ~digitalio.DigitalInOut cs_pin:  SPI bus enable pin
         :param int baudrate: The bit rate of the bus in Hz, using a 16Mhz crystal. All devices on\
             the bus must agree on this value. Defaults to 250000.
-        :param bool xtal_frequency: MCP2515 crystal frequency. Valid values are: 16000000 and 8000000. Defaults to 16000000 (16MHz).\
+        :param bool xtal_frequency: MCP2515 crystal frequency. Valid values are:\
+            16000000 and 8000000. Defaults to 16000000 (16MHz).\
         :param bool loopback: Receive only packets sent from this device, and send only to this\
         device. Requires that `silent` is also set to `True`, but only prevents transmission to\
         other devices. Otherwise the send/receive behavior is normal.
@@ -633,7 +634,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
     def _set_baud_rate(self):
         # ******* set baud rate ***********
-        if self._xtal_frequency != 16000000 and self._xtal_frequency != 8000000:
+        if self._xtal_frequency not in (16000000, 8000000):
             raise RuntimeError("Incorrect xtal frequency")
 
         cnf1, cnf2, cnf3 = _BAUD_RATES[self._xtal_frequency][self.baudrate]
