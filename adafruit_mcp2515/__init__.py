@@ -192,11 +192,6 @@ _BAUD_RATES = {
     # https://www.kvaser.com/support/calculators/bit-timing-calculator/
     8000000: {
         # CNF1, CNF2, CNF3
-        1000000: (
-            0x00,
-            0x91,
-            0x01,
-        ),  # seems it is not possible, this values may be wrong
         500000: (0x00, 0x91, 0x01),
         250000: (0x40, 0xB5, 0x01),
         200000: (0x00, 0xB6, 0x04),
