@@ -25,6 +25,11 @@ Implementation Notes
 """
 
 from collections import namedtuple
+
+try:
+    from typing_extensions import Literal
+except ImportError:
+    pass
 from struct import unpack_from, pack_into
 from time import sleep
 from micropython import const
@@ -241,7 +246,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         cs_pin,
         *,
         baudrate: int = 250000,
-        xtal_frequency: int = 16000000,
+        crystal_freq: Literal[8000000, 16000000] = 16000000,
         loopback: bool = False,
         silent: bool = False,
         auto_restart: bool = False,
@@ -253,7 +258,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         :param ~digitalio.DigitalInOut cs_pin:  SPI bus enable pin
         :param int baudrate: The bit rate of the bus in Hz, using a 16Mhz crystal. All devices on\
             the bus must agree on this value. Defaults to 250000.
-        :param bool xtal_frequency: MCP2515 crystal frequency. Valid values are:\
+        :param Literal crystal_freq: MCP2515 crystal frequency. Valid values are:\
             16000000 and 8000000. Defaults to 16000000 (16MHz).\
         :param bool loopback: Receive only packets sent from this device, and send only to this\
         device. Requires that `silent` is also set to `True`, but only prevents transmission to\
@@ -289,7 +294,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         self._mode = None
         self._bus_state = BusState.ERROR_ACTIVE
         self._baudrate = baudrate
-        self._xtal_frequency = xtal_frequency
+        self._crystal_freq = crystal_freq
         self._loopback = loopback
         self._silent = silent
 
@@ -632,10 +637,10 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
     def _set_baud_rate(self):
         # ******* set baud rate ***********
-        if self._xtal_frequency not in (16000000, 8000000):
+        if self._crystal_freq not in (16000000, 8000000):
             raise RuntimeError("Incorrect xtal frequency")
 
-        cnf1, cnf2, cnf3 = _BAUD_RATES[self._xtal_frequency][self.baudrate]
+        cnf1, cnf2, cnf3 = _BAUD_RATES[self._crystal_freq][self.baudrate]
 
         self._set_register(_CNF1, cnf1)
         self._set_register(_CNF2, cnf2)
