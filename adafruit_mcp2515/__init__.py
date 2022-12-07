@@ -25,17 +25,17 @@ Implementation Notes
 """
 
 from collections import namedtuple
-
-try:
-    from typing_extensions import Literal
-except ImportError:
-    pass
 from struct import unpack_from, pack_into
 from time import sleep
 from micropython import const
 from adafruit_bus_device import spi_device
 from .canio import *
 from .timer import Timer
+
+try:
+    from typing_extensions import Literal
+except ImportError:
+    pass
 
 __version__ = "0.0.0+auto.0"
 __repo__ = "https://github.com/adafruit/Adafruit_CircuitPython_MCP2515.git"
@@ -250,7 +250,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         loopback: bool = False,
         silent: bool = False,
         auto_restart: bool = False,
-        debug: bool = False
+        debug: bool = False,
     ):
         """A common shared-bus protocol.
 
@@ -638,7 +638,9 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
     def _set_baud_rate(self):
         # ******* set baud rate ***********
         if self._crystal_freq not in (16000000, 8000000):
-            raise RuntimeError("Incorrect xtal frequency")
+            raise ValueError(
+                f"Incorrect crystal frequency - must be one of: {tuple(_BAUD_RATES.keys())}"
+            )
 
         cnf1, cnf2, cnf3 = _BAUD_RATES[self._crystal_freq][self.baudrate]
 
