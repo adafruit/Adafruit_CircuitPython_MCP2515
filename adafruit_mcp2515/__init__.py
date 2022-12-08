@@ -32,6 +32,11 @@ from adafruit_bus_device import spi_device
 from .canio import *
 from .timer import Timer
 
+try:
+    from typing_extensions import Literal
+except ImportError:
+    pass
+
 __version__ = "0.0.0+auto.0"
 __repo__ = "https://github.com/adafruit/Adafruit_CircuitPython_MCP2515.git"
 
@@ -164,28 +169,52 @@ ReceiveBuffer = namedtuple(
     ["CTRL_REG", "STD_ID_REG", "INT_FLAG_MASK", "LOAD_CMD", "SEND_CMD"],
 )
 
-# This is magic, don't disturb the dragon
-# expects a 16Mhz crystal
 _BAUD_RATES = {
-    # CNF1, CNF2, CNF3
-    1000000: (0x00, 0xD0, 0x82),
-    500000: (0x00, 0xF0, 0x86),
-    250000: (0x41, 0xF1, 0x85),
-    200000: (0x01, 0xFA, 0x87),
-    125000: (0x03, 0xF0, 0x86),
-    100000: (0x03, 0xFA, 0x87),
-    95000: (0x03, 0xAD, 0x07),
-    83300: (0x03, 0xBE, 0x07),
-    80000: (0x03, 0xFF, 0x87),
-    50000: (0x07, 0xFA, 0x87),
-    40000: (0x07, 0xFF, 0x87),
-    33000: (0x09, 0xBE, 0x07),
-    31250: (0x0F, 0xF1, 0x85),
-    25000: (0x0F, 0xBA, 0x07),
-    20000: (0x0F, 0xFF, 0x87),
-    10000: (0x1F, 0xFF, 0x87),
-    5000: (0x3F, 0xFF, 0x87),
-    666000: (0x00, 0xA0, 0x04),
+    # This is magic, don't disturb the dragon
+    # expects a 16Mhz crystal
+    16000000: {
+        # CNF1, CNF2, CNF3
+        1000000: (0x00, 0xD0, 0x82),
+        500000: (0x00, 0xF0, 0x86),
+        250000: (0x41, 0xF1, 0x85),
+        200000: (0x01, 0xFA, 0x87),
+        125000: (0x03, 0xF0, 0x86),
+        100000: (0x03, 0xFA, 0x87),
+        95000: (0x03, 0xAD, 0x07),
+        83300: (0x03, 0xBE, 0x07),
+        80000: (0x03, 0xFF, 0x87),
+        50000: (0x07, 0xFA, 0x87),
+        40000: (0x07, 0xFF, 0x87),
+        33000: (0x09, 0xBE, 0x07),
+        31250: (0x0F, 0xF1, 0x85),
+        25000: (0x0F, 0xBA, 0x07),
+        20000: (0x0F, 0xFF, 0x87),
+        10000: (0x1F, 0xFF, 0x87),
+        5000: (0x3F, 0xFF, 0x87),
+        666000: (0x00, 0xA0, 0x04),
+    },
+    # Values based on this calculator, for 8MHz, controller MCP2510:
+    # https://www.kvaser.com/support/calculators/bit-timing-calculator/
+    8000000: {
+        # CNF1, CNF2, CNF3
+        500000: (0x00, 0x91, 0x01),
+        250000: (0x40, 0xB5, 0x01),
+        200000: (0x00, 0xB6, 0x04),
+        125000: (0x01, 0xAC, 0x03),
+        100000: (0x01, 0xB6, 0x04),
+        95000: (0x41, 0xBE, 0x04),
+        83300: (0x02, 0xAC, 0x03),
+        80000: (0x04, 0x9A, 0x01),
+        50000: (0x03, 0xB6, 0x04),
+        40000: (0x04, 0xB6, 0x04),
+        33000: (0x0A, 0x9A, 0x02),
+        31250: (0x07, 0xAC, 0x03),
+        25000: (0x07, 0xB6, 0x04),
+        20000: (0x09, 0xB6, 0x04),
+        10000: (0x13, 0xB6, 0x04),
+        5000: (0x27, 0xB6, 0x04),
+        666000: (0x00, 0x88, 0x01),
+    },
 }
 
 
@@ -217,10 +246,11 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         cs_pin,
         *,
         baudrate: int = 250000,
+        crystal_freq: Literal[8000000, 16000000] = 16000000,
         loopback: bool = False,
         silent: bool = False,
         auto_restart: bool = False,
-        debug: bool = False
+        debug: bool = False,
     ):
         """A common shared-bus protocol.
 
@@ -228,6 +258,8 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         :param ~digitalio.DigitalInOut cs_pin:  SPI bus enable pin
         :param int baudrate: The bit rate of the bus in Hz, using a 16Mhz crystal. All devices on\
             the bus must agree on this value. Defaults to 250000.
+        :param Literal crystal_freq: MCP2515 crystal frequency. Valid values are:\
+            16000000 and 8000000. Defaults to 16000000 (16MHz).\
         :param bool loopback: Receive only packets sent from this device, and send only to this\
         device. Requires that `silent` is also set to `True`, but only prevents transmission to\
         other devices. Otherwise the send/receive behavior is normal.
@@ -262,9 +294,9 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         self._mode = None
         self._bus_state = BusState.ERROR_ACTIVE
         self._baudrate = baudrate
+        self._crystal_freq = crystal_freq
         self._loopback = loopback
         self._silent = silent
-        self._baudrate = baudrate
 
         self._init_buffers()
         self.initialize()
@@ -604,9 +636,13 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         return tx_buffer
 
     def _set_baud_rate(self):
+        # ******* set baud rate ***********
+        if self._crystal_freq not in (16000000, 8000000):
+            raise ValueError(
+                f"Incorrect crystal frequency - must be one of: {tuple(_BAUD_RATES.keys())}"
+            )
 
-        # *******8 set baud rate ***********
-        cnf1, cnf2, cnf3 = _BAUD_RATES[self.baudrate]
+        cnf1, cnf2, cnf3 = _BAUD_RATES[self._crystal_freq][self.baudrate]
 
         self._set_register(_CNF1, cnf1)
         self._set_register(_CNF2, cnf2)
