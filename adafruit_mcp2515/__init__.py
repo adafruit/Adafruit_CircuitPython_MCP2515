@@ -169,52 +169,80 @@ ReceiveBuffer = namedtuple(
     ["CTRL_REG", "STD_ID_REG", "INT_FLAG_MASK", "LOAD_CMD", "SEND_CMD"],
 )
 
+#    ---   Baud Rates Table   ---
+# Values for the 8MHz and 10MHz Crystal Oscillator are based on this calculator:
+# https://www.kvaser.com/support/calculators/bit-timing-calculator/
+# - MCP2510 can be used to calculate the timing values since the registers are allmost the same
+#   Only difference is the CNF3, which has an extra bit (CNF3[7] = SOF, Start of Frame signal bit)
+#   The SOF bit can be left on zero
+# - A bit sample point (SP%) of 70% is used if nothing else is defined
+# - A Synchronization Jump Width (SJW) of 1 Time Quanta (TQ) is used
+
 _BAUD_RATES = {
     # This is magic, don't disturb the dragon
     # expects a 16Mhz crystal
     16000000: {
-        # CNF1, CNF2, CNF3
+        #         CNF1, CNF2, CNF3
         1000000: (0x00, 0xD0, 0x82),
-        500000: (0x00, 0xF0, 0x86),
-        250000: (0x41, 0xF1, 0x85),
-        200000: (0x01, 0xFA, 0x87),
-        125000: (0x03, 0xF0, 0x86),
-        100000: (0x03, 0xFA, 0x87),
-        95000: (0x03, 0xAD, 0x07),
-        83300: (0x03, 0xBE, 0x07),
-        80000: (0x03, 0xFF, 0x87),
-        50000: (0x07, 0xFA, 0x87),
-        40000: (0x07, 0xFF, 0x87),
-        33000: (0x09, 0xBE, 0x07),
-        31250: (0x0F, 0xF1, 0x85),
-        25000: (0x0F, 0xBA, 0x07),
-        20000: (0x0F, 0xFF, 0x87),
-        10000: (0x1F, 0xFF, 0x87),
-        5000: (0x3F, 0xFF, 0x87),
-        666000: (0x00, 0xA0, 0x04),
+        500000:  (0x00, 0xF0, 0x86),
+        250000:  (0x41, 0xF1, 0x85),
+        200000:  (0x01, 0xFA, 0x87),
+        125000:  (0x03, 0xF0, 0x86),
+        100000:  (0x03, 0xFA, 0x87),
+        95000:   (0x03, 0xAD, 0x07),
+        83300:   (0x03, 0xBE, 0x07),
+        80000:   (0x03, 0xFF, 0x87),
+        50000:   (0x07, 0xFA, 0x87),
+        40000:   (0x07, 0xFF, 0x87),
+        33000:   (0x09, 0xBE, 0x07),
+        31250:   (0x0F, 0xF1, 0x85),
+        25000:   (0x0F, 0xBA, 0x07),
+        20000:   (0x0F, 0xFF, 0x87),
+        10000:   (0x1F, 0xFF, 0x87),
+        5000:    (0x3F, 0xFF, 0x87),
+        666000:  (0x00, 0xA0, 0x04)
     },
-    # Values based on this calculator, for 8MHz, controller MCP2510:
-    # https://www.kvaser.com/support/calculators/bit-timing-calculator/
+    # 10MHz Crystal oscillator (used on the MIKROE "CAN SPI click"-board)
+    10000000: {
+        #        CNF1, CNF2, CNF3
+        500000: (0x00, 0x92, 0x02),
+        250000: (0x00, 0xB5, 0x05),
+        200000: (0x00, 0xBF, 0x07),         # SP is 68%!
+        125000: (0x01, 0xA4, 0x04),         # SP is 68.75%!
+        100000: (0x01, 0xB5, 0x05),
+        95000:  (0x05, 0x89, 0x01),         # SP is 71.43%, Baud rate is 95.238kbps!
+        83300:  (0x02, 0xA4, 0x04),         # SP is 68.75%, Baud rate is 83.333kbps!
+        80000:  (0x04, 0x92, 0x02),
+        50000:  (0x03, 0xB5, 0x05),
+        40000:  (0x04, 0xB5, 0x05),
+        33000:  (0x05, 0xB5, 0x05),         # Baud rate is 33.333kbps!
+        31250:  (0x07, 0xA4, 0x04),         # SP is 68.75%!
+        25000:  (0x07, 0xB5, 0x05),
+        20000:  (0x09, 0xB5, 0x05),
+        10000:  (0x13, 0xB5, 0x05),
+        5000:   (0x27, 0xB5, 0x05)
+    },
+    # 8MHz Crystal oscillator
     8000000: {
-        # CNF1, CNF2, CNF3
+        #        CNF1, CNF2, CNF3
         500000: (0x00, 0x91, 0x01),
         250000: (0x40, 0xB5, 0x01),
         200000: (0x00, 0xB6, 0x04),
         125000: (0x01, 0xAC, 0x03),
         100000: (0x01, 0xB6, 0x04),
-        95000: (0x41, 0xBE, 0x04),
-        83300: (0x02, 0xAC, 0x03),
-        80000: (0x04, 0x9A, 0x01),
-        50000: (0x03, 0xB6, 0x04),
-        40000: (0x04, 0xB6, 0x04),
-        33000: (0x0A, 0x9A, 0x02),
-        31250: (0x07, 0xAC, 0x03),
-        25000: (0x07, 0xB6, 0x04),
-        20000: (0x09, 0xB6, 0x04),
-        10000: (0x13, 0xB6, 0x04),
-        5000: (0x27, 0xB6, 0x04),
-        666000: (0x00, 0x88, 0x01),
-    },
+        95000:  (0x41, 0xBE, 0x04),
+        83300:  (0x02, 0xAC, 0x03),
+        80000:  (0x04, 0x9A, 0x01),
+        50000:  (0x03, 0xB6, 0x04),
+        40000:  (0x04, 0xB6, 0x04),
+        33000:  (0x0A, 0x9A, 0x02),
+        31250:  (0x07, 0xAC, 0x03),
+        25000:  (0x07, 0xB6, 0x04),
+        20000:  (0x09, 0xB6, 0x04),
+        10000:  (0x13, 0xB6, 0x04),
+        5000:   (0x27, 0xB6, 0x04),
+        666000: (0x00, 0x88, 0x01)
+    }
 }
 
 
@@ -246,7 +274,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         cs_pin,
         *,
         baudrate: int = 250000,
-        crystal_freq: Literal[8000000, 16000000] = 16000000,
+        crystal_freq: Literal[8000000, 10000000, 16000000] = 16000000,
         loopback: bool = False,
         silent: bool = False,
         auto_restart: bool = False,
@@ -259,7 +287,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         :param int baudrate: The bit rate of the bus in Hz, using a 16Mhz crystal. All devices on\
             the bus must agree on this value. Defaults to 250000.
         :param Literal crystal_freq: MCP2515 crystal frequency. Valid values are:\
-            16000000 and 8000000. Defaults to 16000000 (16MHz).\
+            16000000, 10000000 and 8000000. Defaults to 16000000 (16MHz).\
         :param bool loopback: Receive only packets sent from this device, and send only to this\
         device. Requires that `silent` is also set to `True`, but only prevents transmission to\
         other devices. Otherwise the send/receive behavior is normal.
@@ -637,7 +665,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
     def _set_baud_rate(self):
         # ******* set baud rate ***********
-        if self._crystal_freq not in (16000000, 8000000):
+        if self._crystal_freq not in _BAUD_RATES.keys():
             raise ValueError(
                 f"Incorrect crystal frequency - must be one of: {tuple(_BAUD_RATES.keys())}"
             )
