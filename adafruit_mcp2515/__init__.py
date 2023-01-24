@@ -665,7 +665,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
     def _set_baud_rate(self):
         # ******* set baud rate ***********
-        if self._crystal_freq not in _BAUD_RATES.keys():
+        if self._crystal_freq not in _BAUD_RATES:
             raise ValueError(
                 f"Incorrect crystal frequency - must be one of: {tuple(_BAUD_RATES.keys())}"
             )
