@@ -67,6 +67,13 @@ class RemoteTransmissionRequest:
         self.extended = extended
 
 
+# Replace the above implementation with core canio implementation if it is available
+try:
+    from canio import Message, RemoteTransmissionRequest
+except ImportError:
+    pass
+
+
 class Listener:
     """Listens for a CAN message
 
