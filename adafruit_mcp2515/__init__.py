@@ -158,14 +158,8 @@ _EFLG = const(0x2D)
 _SEND_TIMEOUT_MS = const(5)  # 500ms
 _MAX_CAN_MSG_LEN = 8  # ?!
 # perhaps this will be stateful later?
-TransmitBuffer = namedtuple(
-    "TransmitBuffer",
-    ["CTRL_REG", "STD_ID_REG", "INT_FLAG_MASK", "LOAD_CMD", "SEND_CMD"],
-)
-
-# perhaps this will be stateful later? #TODO : dedup with above
-ReceiveBuffer = namedtuple(
-    "TransmitBuffer",
+_TransmitBuffer = namedtuple(
+    "_TransmitBuffer",
     ["CTRL_REG", "STD_ID_REG", "INT_FLAG_MASK", "LOAD_CMD", "SEND_CMD"],
 )
 
@@ -330,21 +324,21 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
     def _init_buffers(self):
 
         self._tx_buffers = [
-            TransmitBuffer(
+            _TransmitBuffer(
                 CTRL_REG=_TXB0CTRL,
                 STD_ID_REG=_TXB0SIDH,
                 INT_FLAG_MASK=_TX0IF,
                 LOAD_CMD=_LOAD_TX0,
                 SEND_CMD=_SEND_TX0,
             ),
-            TransmitBuffer(
+            _TransmitBuffer(
                 CTRL_REG=_TXB1CTRL,
                 STD_ID_REG=_TXB1SIDH,
                 INT_FLAG_MASK=_TX1IF,
                 LOAD_CMD=_LOAD_TX1,
                 SEND_CMD=_SEND_TX1,
             ),
-            TransmitBuffer(
+            _TransmitBuffer(
                 CTRL_REG=_TXB2CTRL,
                 STD_ID_REG=_TXB2SIDH,
                 INT_FLAG_MASK=_TX2IF,
