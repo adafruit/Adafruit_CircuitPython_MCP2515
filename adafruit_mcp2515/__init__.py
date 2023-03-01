@@ -264,7 +264,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
         :param ~busio.SPI spi: The SPI bus used to communicate with the MCP2515
         :param ~digitalio.DigitalInOut cs_pin:  SPI bus enable pin
-        :param int baudrate: The bit rate of the bus in Hz, using a 16Mhz crystal. All devices on\
+        :param int baudrate: The bit rate of the bus in Hz. All devices on\
             the bus must agree on this value. Defaults to 250000.
         :param Literal crystal_freq: MCP2515 crystal frequency. Valid values are:\
             16000000, 10000000 and 8000000. Defaults to 16000000 (16MHz).\
