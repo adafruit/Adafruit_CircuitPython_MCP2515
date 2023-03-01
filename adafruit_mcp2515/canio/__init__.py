@@ -89,8 +89,8 @@ class Listener:
 
     @property
     def timeout(self):
-        """The maximum amount of time in seconds that `read` or `readinto` will wait before giving\
-            up"""
+        """The maximum amount of time in seconds that ``read`` or ``readinto``
+        will wait before giving up"""
         return self._timeout
 
     @timeout.setter
