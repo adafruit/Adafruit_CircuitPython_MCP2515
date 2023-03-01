@@ -8,18 +8,16 @@ from ..timer import Timer
 
 
 class Message:
-    """A class representing a CANbus data frame"""
+    """A class representing a CANbus data frame
+
+    :param int id: The numeric ID of the message
+    :param bytes data: The content of the message, from 0 to 8 bytes of data
+    :param bool extended: True if the message has an extended identifier,
+        False if it has a standard identifier
+    """
 
     # pylint:disable=too-many-arguments,invalid-name,redefined-builtin
     def __init__(self, id, data, extended=False):
-        """Create a `Message` to send
-
-        :param int id: The numeric ID of the message
-        :param bytes data: The content of the message, from 0 to 8 bytes of data
-        :param bool extended: True if the message has an extended identifier,
-            False if it has a standard identifier
-        """
-
         self._data = None
         self.id = id
         self.data = data
@@ -53,17 +51,15 @@ class Message:
 
 
 class RemoteTransmissionRequest:
-    """A class representing a CANbus remote frame"""
+    """A class representing a CANbus remote frame
+
+    :param int id: The numeric ID of the message
+    :param length int: The length of the requested message
+    :param bool extended: True if the message has an extended identifier,
+        False if it has a standard identifier
+    """
 
     def __init__(self, id: int, length: int, *, extended: bool = False):
-        """Construct a RemoteTransmissionRequest to send on a CAN bus
-
-        Args:
-        :param int id: The numeric ID of the message
-        :param length int: The length of the requested message
-        :param bool extended: True if the message has an extended identifier,
-            False if it has a standard identifier
-        """
         self.id = id
         self.length = length
         self.extended = extended
@@ -88,8 +84,8 @@ except ImportError:
 class Listener:
     """Listens for a CAN message
 
-        canio.Listener is not constructed directly, but instead by calling the `listen` method of a\
-        canio.CAN object.
+    canio.Listener is not constructed directly, but instead by calling the
+    ``listen`` method of a canio.CAN object.
     """
 
     def __init__(self, can_bus_obj, timeout=1.0):

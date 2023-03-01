@@ -266,21 +266,7 @@ def _tx_buffer_status_decode(status_byte):
 
 
 class MCP2515:  # pylint:disable=too-many-instance-attributes
-    """A common shared-bus protocol."""
-
-    def __init__(
-        self,
-        spi_bus,
-        cs_pin,
-        *,
-        baudrate: int = 250000,
-        crystal_freq: Literal[8000000, 10000000, 16000000] = 16000000,
-        loopback: bool = False,
-        silent: bool = False,
-        auto_restart: bool = False,
-        debug: bool = False,
-    ):
-        """A common shared-bus protocol.
+    """A common shared-bus protocol.
 
         :param ~busio.SPI spi: The SPI bus used to communicate with the MCP2515
         :param ~digitalio.DigitalInOut cs_pin:  SPI bus enable pin
@@ -297,9 +283,21 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         :param bool auto_restart: **Not supported by hardware. An `AttributeError` will be raised\
         if `auto_restart` is set to `True`** If `True`, will restart communications after entering\
         bus-off state. Defaults to `False`.
-
         :param bool debug: If `True`, will enable printing debug information. Defaults to `False`.
         """
+
+    def __init__(
+        self,
+        spi_bus,
+        cs_pin,
+        *,
+        baudrate: int = 250000,
+        crystal_freq: Literal[8000000, 10000000, 16000000] = 16000000,
+        loopback: bool = False,
+        silent: bool = False,
+        auto_restart: bool = False,
+        debug: bool = False,
+    ):
 
         if loopback and not silent:
             raise AttributeError("Loopback mode requires silent to be set")
