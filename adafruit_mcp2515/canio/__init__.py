@@ -8,29 +8,30 @@ from ..timer import Timer
 
 
 class Message:
-    """A class representing a CANbus data frame"""
+    """A class representing a CANbus data frame
+
+    :param int id: The numeric ID of the message
+    :param bytes data: The content of the message, from 0 to 8 bytes of data
+    :param bool extended: True if the message has an extended identifier,
+        False if it has a standard identifier
+    """
 
     # pylint:disable=too-many-arguments,invalid-name,redefined-builtin
     def __init__(self, id, data, extended=False):
-        """Create a `Message` to send
-
-        Args:
-            id (int): The numeric ID of the message
-            data (bytes): The content of the message
-            extended (bool): True if the
-        Raises:
-            AttributeError: If `data` of type `bytes` is not provided for a non-RTR message
-            AttributeError: If `data` is larger than 8 bytes
-        """
-
         self._data = None
         self.id = id
         self.data = data
         self.extended = extended
 
+    id: int
+    """The numeric ID of the message"""
+
+    extended: bool
+    """Indicates whether the the message has an extended identifier"""
+
     @property
     def data(self):
-        """The content of the message, or dummy content in the case of an rtr"""
+        """The content of the message"""
         return self._data
 
     @data.setter
@@ -50,28 +51,41 @@ class Message:
 
 
 class RemoteTransmissionRequest:
-    """A class representing a CANbus remote frame"""
+    """A class representing a CANbus remote frame
+
+    :param int id: The numeric ID of the message
+    :param length int: The length of the requested message
+    :param bool extended: True if the message has an extended identifier,
+        False if it has a standard identifier
+    """
 
     def __init__(self, id: int, length: int, *, extended: bool = False):
-        """Construct a RemoteTransmissionRequest to send on a CAN bus
-
-        Args:
-            id (int): The numeric ID of the requested message
-            length (int): The length of the requested message
-            extended (bool, optional): True if the message has an extended identifier, False if it\
-                has a standard identifier. Defaults to False.
-
-        """
         self.id = id
         self.length = length
         self.extended = extended
+
+    id: int
+    """The numeric ID of the message"""
+
+    extended: bool
+    """Indicates whether the the message has an extended identifier"""
+
+    length: int
+    """The length of the requested message, from 0 to 8"""
+
+
+# Replace the above implementation with core canio implementation if it is available
+try:
+    from canio import Message, RemoteTransmissionRequest
+except ImportError:
+    pass
 
 
 class Listener:
     """Listens for a CAN message
 
-        canio.Listener is not constructed directly, but instead by calling the `listen` method of a\
-        canio.CAN object.
+    canio.Listener is not constructed directly, but instead by calling the
+    ``listen`` method of a canio.CAN object.
     """
 
     def __init__(self, can_bus_obj, timeout=1.0):
@@ -82,8 +96,8 @@ class Listener:
 
     @property
     def timeout(self):
-        """The maximum amount of time in seconds that `read` or `readinto` will wait before giving\
-            up"""
+        """The maximum amount of time in seconds that ``read`` or ``readinto``
+        will wait before giving up"""
         return self._timeout
 
     @timeout.setter

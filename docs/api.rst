@@ -6,3 +6,5 @@
 
 .. automodule:: adafruit_mcp2515
    :members:
+.. automodule:: adafruit_mcp2515.canio
+   :members:

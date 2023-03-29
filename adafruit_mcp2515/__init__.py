@@ -158,14 +158,8 @@ _EFLG = const(0x2D)
 _SEND_TIMEOUT_MS = const(5)  # 500ms
 _MAX_CAN_MSG_LEN = 8  # ?!
 # perhaps this will be stateful later?
-TransmitBuffer = namedtuple(
-    "TransmitBuffer",
-    ["CTRL_REG", "STD_ID_REG", "INT_FLAG_MASK", "LOAD_CMD", "SEND_CMD"],
-)
-
-# perhaps this will be stateful later? #TODO : dedup with above
-ReceiveBuffer = namedtuple(
-    "TransmitBuffer",
+_TransmitBuffer = namedtuple(
+    "_TransmitBuffer",
     ["CTRL_REG", "STD_ID_REG", "INT_FLAG_MASK", "LOAD_CMD", "SEND_CMD"],
 )
 
@@ -266,7 +260,25 @@ def _tx_buffer_status_decode(status_byte):
 
 
 class MCP2515:  # pylint:disable=too-many-instance-attributes
-    """A common shared-bus protocol."""
+    """A common shared-bus protocol.
+
+        :param ~busio.SPI spi: The SPI bus used to communicate with the MCP2515
+        :param ~digitalio.DigitalInOut cs_pin:  SPI bus enable pin
+        :param int baudrate: The bit rate of the bus in Hz. All devices on\
+            the bus must agree on this value. Defaults to 250000.
+        :param Literal crystal_freq: MCP2515 crystal frequency. Valid values are:\
+            16000000, 10000000 and 8000000. Defaults to 16000000 (16MHz).\
+        :param bool loopback: Receive only packets sent from this device, and send only to this\
+        device. Requires that `silent` is also set to `True`, but only prevents transmission to\
+        other devices. Otherwise the send/receive behavior is normal.
+        :param bool silent: When `True` the controller does not transmit and all messages are\
+        received, ignoring errors and filters. This mode can be used to “sniff” a CAN bus without\
+        interfering. Defaults to `False`.
+        :param bool auto_restart: **Not supported by hardware. An `AttributeError` will be raised\
+        if `auto_restart` is set to `True`** If `True`, will restart communications after entering\
+        bus-off state. Defaults to `False`.
+        :param bool debug: If `True`, will enable printing debug information. Defaults to `False`.
+        """
 
     def __init__(
         self,
@@ -280,26 +292,6 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         auto_restart: bool = False,
         debug: bool = False,
     ):
-        """A common shared-bus protocol.
-
-        :param ~busio.SPI spi: The SPI bus used to communicate with the MCP2515
-        :param ~digitalio.DigitalInOut cs_pin:  SPI bus enable pin
-        :param int baudrate: The bit rate of the bus in Hz, using a 16Mhz crystal. All devices on\
-            the bus must agree on this value. Defaults to 250000.
-        :param Literal crystal_freq: MCP2515 crystal frequency. Valid values are:\
-            16000000, 10000000 and 8000000. Defaults to 16000000 (16MHz).\
-        :param bool loopback: Receive only packets sent from this device, and send only to this\
-        device. Requires that `silent` is also set to `True`, but only prevents transmission to\
-        other devices. Otherwise the send/receive behavior is normal.
-        :param bool silent: When `True` the controller does not transmit and all messages are\
-        received, ignoring errors and filters. This mode can be used to “sniff” a CAN bus without\
-        interfering. Defaults to `False`.
-        :param bool auto_restart: **Not supported by hardware. An `AttributeError` will be raised\
-        if `auto_restart` is set to `True`** If `True`, will restart communications after entering\
-        bus-off state. Defaults to `False`.
-
-        :param bool debug: If `True`, will enable printing debug information. Defaults to `False`.
-        """
 
         if loopback and not silent:
             raise AttributeError("Loopback mode requires silent to be set")
@@ -332,21 +324,21 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
     def _init_buffers(self):
 
         self._tx_buffers = [
-            TransmitBuffer(
+            _TransmitBuffer(
                 CTRL_REG=_TXB0CTRL,
                 STD_ID_REG=_TXB0SIDH,
                 INT_FLAG_MASK=_TX0IF,
                 LOAD_CMD=_LOAD_TX0,
                 SEND_CMD=_SEND_TX0,
             ),
-            TransmitBuffer(
+            _TransmitBuffer(
                 CTRL_REG=_TXB1CTRL,
                 STD_ID_REG=_TXB1SIDH,
                 INT_FLAG_MASK=_TX1IF,
                 LOAD_CMD=_LOAD_TX1,
                 SEND_CMD=_SEND_TX1,
             ),
-            TransmitBuffer(
+            _TransmitBuffer(
                 CTRL_REG=_TXB2CTRL,
                 STD_ID_REG=_TXB2SIDH,
                 INT_FLAG_MASK=_TX2IF,
