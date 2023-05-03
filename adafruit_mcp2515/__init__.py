@@ -99,7 +99,6 @@ _TX2IF = const(0x10)
 # Filters & Masks
 _RXM0SIDH = const(0x20)
 _RXM1SIDH = const(0x24)
-MASKS = [_RXM0SIDH, _RXM1SIDH]
 
 _RXF0SIDH = const(0x00)
 _RXF1SIDH = const(0x04)
@@ -107,7 +106,19 @@ _RXF2SIDH = const(0x08)
 _RXF3SIDH = const(0x10)
 _RXF4SIDH = const(0x14)
 _RXF5SIDH = const(0x18)
-FILTERS = [[_RXF0SIDH, _RXF1SIDH], [_RXF2SIDH, _RXF3SIDH, _RXF4SIDH, _RXF5SIDH]]
+
+MASKS_FILTERS = {
+    _RXM0SIDH: [None, {
+        _RXF0SIDH: None,
+        _RXF1SIDH: None
+    }],
+    _RXM1SIDH: [None, {
+        _RXF2SIDH: None,
+        _RXF3SIDH: None,
+        _RXF4SIDH: None,
+        _RXF5SIDH: None
+    }]
+}
 # bits/flags
 _RX0IF = const(0x01)
 _RX1IF = const(0x02)
@@ -309,8 +320,6 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         self._tx_buffers = []
         self._rx0_overflow = False
         self._rx1_overflow = False
-        self._masks_in_use = []
-        self._filters_in_use = [[], []]
         self._mode = None
         self._bus_state = BusState.ERROR_ACTIVE
         self._baudrate = baudrate
@@ -538,13 +547,8 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
                 in_end=1,
             )
 
-    def _set_filter_register(self, filter_index, mask, extended):
-        filter_reg_addr = FILTERS[filter_index]
-        self._write_id_to_register(filter_reg_addr, mask, extended)
-
-    def _set_mask_register(self, mask_index, mask, extended):
-        mask_reg_addr = MASKS[mask_index]
-        self._write_id_to_register(mask_reg_addr, mask, extended)
+    def _set_acceptance_register(self, register, value, is_extended):
+        self._write_id_to_register(register, value, is_extended)
 
     @staticmethod
     def _unload_ids(raw_ids):
@@ -774,45 +778,72 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         else:
             self._bus_state = BusState.ERROR_ACTIVE
 
-    def _create_mask(self, match):
-        mask = match.mask
-        if mask == 0:
-            if match.extended:
-                mask = EXTID_BOTTOM_29_MASK
-            else:
-                mask = STDID_BOTTOM_11_MASK
+    def _find_mask_and_filter(self, match_mask: int):
+        """Finds the optimal mask and filter registers for the given mask.
 
-        masks_used = len(self._masks_in_use)
-        if masks_used < len(MASKS):
-            next_mask_index = masks_used
+        Returns a tuple of (mask, filter) registers.
+        Returns `None` if no mask and filter are available.
 
-            self._set_mask_register(next_mask_index, mask, match.extended)
-            self._masks_in_use.append(MASKS[next_mask_index])
-            return next_mask_index
+        Args:
+            mask (int): The mask value to fit.
+        """
 
-        raise RuntimeError("No Masks Available")
+        mask: int = None
+        filt: int = None
 
-    def _create_filter(self, match, mask_index):
+        # First try to find a matching mask with a free filter
+        for mask_reg, [mask_val, filts] in MASKS_FILTERS.items():
+            if mask_val == match_mask:
+                # Matching mask, look for a free filter
+                for filt_reg, filt_val in filts.items():
+                    if not filt_val:
+                        # Free filter
+                        mask = mask_reg
+                        filt = filt_reg
+                        break
 
-        next_filter_index = len(self._filters_in_use[mask_index])
-        if next_filter_index == len(FILTERS[mask_index]):
-            raise RuntimeError("No Filters Available")
+                if mask:
+                    # We're done here
+                    break
 
-        filter_register = FILTERS[mask_index][next_filter_index]
+        if mask is None:
+            # Then try to find a free mask
+            for mask_reg, [mask_val, filts] in MASKS_FILTERS.items():
+                if mask_val is None:
+                    mask = mask_reg
+                    filt = next(iter(filts.keys()))
+                    break
 
-        self._write_id_to_register(filter_register, match.address, match.extended)
-        self._filters_in_use[mask_index].append(filter_register)
+        return (mask, filt) if mask is not None else None
+
+    def _create_mask_and_filter(self, match: Match):
+        actual_mask = match.mask
+        if match.mask == 0:
+            actual_mask = EXTID_BOTTOM_29_MASK if match.extended \
+                else STDID_BOTTOM_11_MASK
+
+        result = self._find_mask_and_filter(actual_mask)
+        if not result:
+            raise Exception(
+                "No mask and filter is available for "
+                f"mask 0x{match.mask:03x}, addr 0x{match.address:03x}"
+            )
+        
+        (mask, filt) = result
+        self._set_acceptance_register(mask, match.mask, match.extended)
+        self._set_acceptance_register(filt, match.address, match.extended)
+        MASKS_FILTERS[mask][0] = match.mask
+        MASKS_FILTERS[mask][1][filt] = match.address
 
     def deinit_filtering_registers(self):
         """Clears the Receive Mask and Filter Registers"""
-
-        for mask_index, mask_reg in enumerate(MASKS):
+        for mask_reg, mask_data in MASKS_FILTERS.items():
             self._set_register(mask_reg, 0)
+            mask_data[0] = None # Mask value
+            for filt_reg in mask_data[1]:
+                self._set_register(filt_reg, 0)
+                mask_data[1][filt_reg] = None
 
-            for filter_reg in FILTERS[mask_index]:
-                self._set_register(filter_reg, 0)
-        self._masks_in_use = []
-        self._filters_in_use = [[], []]
 
     ######## CANIO API METHODS #############
     @property
@@ -905,17 +936,13 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
         for match in matches:
             self._dbg("match:", match)
-            mask_index_used = self._create_mask(match)
-            self._create_filter(match, mask_index=mask_index_used)
+            self._create_mask_and_filter(match)
 
-        used_masks = len(self._masks_in_use)
-        # if matches were made and there are unused masks
-        # set the unused masks to prevent them from leaking packets
-        if len(matches) > 0 and used_masks < len(MASKS):
-            next_mask_index = used_masks
-            for idx in range(next_mask_index, len(MASKS)):
-                print("using unused mask index:", idx)
-                self._create_mask(matches[-1])
+        for mask_reg, [mask_val, _] in MASKS_FILTERS.items():
+            if mask_val is None:
+                # Mask unused, set it to a match to prevent leakage
+                self._set_acceptance_register(mask_reg, match.mask, match.extended)
+
 
         return Listener(self, timeout)
 
