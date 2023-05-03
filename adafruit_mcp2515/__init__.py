@@ -826,13 +826,13 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         if not result:
             raise Exception(
                 "No mask and filter is available for "
-                f"mask 0x{match.mask:03x}, addr 0x{match.address:03x}"
+                f"mask 0x{actual_mask:03x}, addr 0x{match.address:03x}"
             )
         
         (mask, filt) = result
-        self._set_acceptance_register(mask, match.mask, match.extended)
+        self._set_acceptance_register(mask, actual_mask, match.extended)
         self._set_acceptance_register(filt, match.address, match.extended)
-        MASKS_FILTERS[mask][0] = match.mask
+        MASKS_FILTERS[mask][0] = actual_mask
         MASKS_FILTERS[mask][1][filt] = match.address
 
     def deinit_filtering_registers(self):
