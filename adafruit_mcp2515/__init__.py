@@ -25,10 +25,12 @@ Implementation Notes
 """
 
 from collections import namedtuple
-from struct import unpack_from, pack_into
+from struct import pack_into, unpack_from
 from time import sleep
-from micropython import const
+
 from adafruit_bus_device import spi_device
+from micropython import const
+
 from .canio import *
 from .timer import Timer
 
@@ -107,18 +109,6 @@ _RXF3SIDH = const(0x10)
 _RXF4SIDH = const(0x14)
 _RXF5SIDH = const(0x18)
 
-MASKS_FILTERS = {
-    _RXM0SIDH: [None, {
-        _RXF0SIDH: None,
-        _RXF1SIDH: None
-    }],
-    _RXM1SIDH: [None, {
-        _RXF2SIDH: None,
-        _RXF3SIDH: None,
-        _RXF4SIDH: None,
-        _RXF5SIDH: None
-    }]
-}
 # bits/flags
 _RX0IF = const(0x01)
 _RX1IF = const(0x02)
@@ -326,6 +316,18 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         self._crystal_freq = crystal_freq
         self._loopback = loopback
         self._silent = silent
+        self._masks_filters = {
+            _RXM0SIDH: [None, {
+                _RXF0SIDH: None,
+                _RXF1SIDH: None
+            }],
+            _RXM1SIDH: [None, {
+                _RXF2SIDH: None,
+                _RXF3SIDH: None,
+                _RXF4SIDH: None,
+                _RXF5SIDH: None
+            }]
+        }
 
         self._init_buffers()
         self.initialize()
@@ -484,7 +486,6 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
             self._read_rx_buffer(_READ_RX1)
 
     def _write_message(self, tx_buffer, message_obj):
-
         if tx_buffer is None:
             raise RuntimeError("No transmit buffer available to send")
         if isinstance(message_obj, RemoteTransmissionRequest):
@@ -535,7 +536,6 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
     # TODO: Priority
     def _start_transmit(self, tx_buffer):
-        #
         self._buffer[0] = tx_buffer.SEND_CMD
         with self._bus_device_obj as spi:
             spi.write_readinto(
@@ -792,7 +792,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         filt: int = None
 
         # First try to find a matching mask with a free filter
-        for mask_reg, [mask_val, filts] in MASKS_FILTERS.items():
+        for mask_reg, [mask_val, filts] in self._masks_filters.items():
             if mask_val == match_mask:
                 # Matching mask, look for a free filter
                 for filt_reg, filt_val in filts.items():
@@ -808,7 +808,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
         if mask is None:
             # Then try to find a free mask
-            for mask_reg, [mask_val, filts] in MASKS_FILTERS.items():
+            for mask_reg, [mask_val, filts] in self._masks_filters.items():
                 if mask_val is None:
                     mask = mask_reg
                     filt = next(iter(filts.keys()))
@@ -832,12 +832,12 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         (mask, filt) = result
         self._set_acceptance_register(mask, actual_mask, match.extended)
         self._set_acceptance_register(filt, match.address, match.extended)
-        MASKS_FILTERS[mask][0] = actual_mask
-        MASKS_FILTERS[mask][1][filt] = match.address
+        self._masks_filters[mask][0] = actual_mask
+        self._masks_filters[mask][1][filt] = match.address
 
     def deinit_filtering_registers(self):
         """Clears the Receive Mask and Filter Registers"""
-        for mask_reg, mask_data in MASKS_FILTERS.items():
+        for mask_reg, mask_data in self._masks_filters.items():
             self._set_register(mask_reg, 0)
             mask_data[0] = None # Mask value
             for filt_reg in mask_data[1]:
@@ -934,12 +934,13 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
                 `silent`==`True` and `loopback` == `False`"
             )
 
+        match = None
         for match in matches:
             self._dbg("match:", match)
             self._create_mask_and_filter(match)
 
-        for mask_reg, [mask_val, _] in MASKS_FILTERS.items():
-            if mask_val is None:
+        for mask_reg, [mask_val, _] in self._masks_filters.items():
+            if mask_val is None and match is not None:
                 # Mask unused, set it to a match to prevent leakage
                 self._set_acceptance_register(mask_reg, match.mask, match.extended)
 
