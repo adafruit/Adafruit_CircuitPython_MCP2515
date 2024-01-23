@@ -327,6 +327,8 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
             _TransmitBuffer(
                 CTRL_REG=_TXB0CTRL,
                 STD_ID_REG=_TXB0SIDH,
+
+        
                 INT_FLAG_MASK=_TX0IF,
                 LOAD_CMD=_LOAD_TX0,
                 SEND_CMD=_SEND_TX0,
@@ -384,7 +386,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
         self._set_mode(new_mode)
 
-    def send(self, message_obj):
+    def send(self, message_obj, x):
         """Send a message on the bus with the given data and id. If the message could not be sent
          due to a full fifo or a bus error condition, RuntimeError is raised.
 
@@ -452,7 +454,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
                 sender_id, message_length, extended=extended
             )
         else:
-            frame_obj = Message(
+            frame_obj =  Message(
                 sender_id,
                 data=bytes(self._buffer[5 : 5 + message_length]),
                 extended=extended,
