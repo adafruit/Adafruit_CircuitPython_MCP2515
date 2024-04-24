@@ -782,12 +782,19 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
             else:
                 mask = STDID_BOTTOM_11_MASK
 
+        # has this mask already been setup, if so just return the index
+        for index, existing_mask in enumerate(self._masks_in_use):
+            if mask == existing_mask:
+                self._dbg("Mask Found", index, existing_mask)
+                return index
+
         masks_used = len(self._masks_in_use)
         if masks_used < len(MASKS):
             next_mask_index = masks_used
 
             self._set_mask_register(next_mask_index, mask, match.extended)
-            self._masks_in_use.append(MASKS[next_mask_index])
+            # self._masks_in_use.append(MASKS[next_mask_index])
+            self._masks_in_use.append(mask)
             return next_mask_index
 
         raise RuntimeError("No Masks Available")
@@ -875,25 +882,38 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         Creating a listener is an expensive operation and can interfere with reception of messages
         by other listeners.
 
-    There is an implementation-defined maximum number of listeners and limit to the complexity of
-    the filters.
+        There is an implementation-defined maximum number of listeners and limit to the complexity of
+        the filters.
 
-    If the hardware cannot support all the requested matches, a ValueError is raised. Note that \
-        generally there are some number of hardware filters shared among all fifos.
+        If the hardware cannot support all the requested matches, a ValueError is raised. Note that \
+            generally there are some number of hardware filters shared among all fifos.
 
-    A message can be received by at most one Listener. If more than one listener matches a message,\
-         it is undefined which one actually receives it.
+        A message can be received by at most one Listener. If more than one listener matches a message,\
+            it is undefined which one actually receives it.
 
-    An empty filter list causes all messages to be accepted.
+        The MCP2515 has space for 2 masks (RXM0/RXM1) and 6 filters (RXMF0-RXMF5). \
+            Mask RXM0 is paired with 2 filters (RXF0-1) and mask RXM1 is paired with 4 filters (RXF2-5).  \
+            Read the MCP2515 datasheet for more details on masks and filters.
 
-    Timeout dictates how long ``receive()`` will block.
+        You can use up to 6 matches (match = mask & filter) in the array. \
+            The order of the match objects in the array matters. \
+            The first unique mask will be placed in RXM0 and can be paired with up to 2 filters. \
+            The second unique mask will be placed in RXM1 and can be paired with up to 4 filters. \
+            When no mask is defined in the match object, an 'exact match' mask of all 1's will be used. \
+            You can use the same mask in multiple matches, however if there are more than \
+            2 unique masks in the matches array, a RuntimeError will be raised. \
+            Similarly if there are more than 2 filters used with the first unique mask or \
+            more than 4 filters used with the second unique mask a RuntimeError will be raised.
+
+        An empty matches array causes all messages to be accepted.
 
         Args:
-            match (Optional[Sequence[Match]], optional): [description]. Defaults to None.
-            timeout (float, optional): [description]. Defaults to 10.
+            matches ([canio.Match], optional): ID patterns used to restrict the packets received. \
+                Defaults to None.
+            timeout (float, optional): dictates how long ``receive()`` will block. Defaults to 10.
 
         Returns:
-            Listener: [description]
+            `canio.Listener`: Listener object used to receive CANio packets based on the arguments passed into ``listen()``
         """
         if matches is None:
             matches = []
