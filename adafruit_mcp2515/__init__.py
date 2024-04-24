@@ -793,7 +793,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
             next_mask_index = masks_used
 
             self._set_mask_register(next_mask_index, mask, match.extended)
-            # Append the actual mask to the 'in use' array so later we can 
+            # Append the actual mask to the 'in use' array so later we can
             # find it to use again
             self._masks_in_use.append(mask)
             return next_mask_index
@@ -883,25 +883,25 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         Creating a listener is an expensive operation and can interfere with reception of messages
         by other listeners.
 
-        There is an implementation-defined maximum number of listeners and limit to the complexity of
-        the filters.
+        There is an implementation-defined maximum number of listeners and limit to the complexity \
+             of the filters.
 
-        If the hardware cannot support all the requested matches, a ValueError is raised. Note that \
-            generally there are some number of hardware filters shared among all fifos.
+        If the hardware cannot support all the requested matches, a ValueError is raised. Note \
+            that generally there are some number of hardware filters shared among all fifos.
 
-        A message can be received by at most one Listener. If more than one listener matches a message,\
-            it is undefined which one actually receives it.
+        A message can be received by at most one Listener. If more than one listener matches a \
+            message, it is undefined which one actually receives it.
 
         The MCP2515 has space for 2 masks (RXM0/RXM1) and 6 filters (RXMF0-RXMF5). \
-            Mask RXM0 is paired with 2 filters (RXF0-1) and mask RXM1 is paired with 4 filters (RXF2-5).  \
-            Read the MCP2515 datasheet for more details on masks and filters.
+            Mask RXM0 is paired with 2 filters (RXF0-1) and mask RXM1 is paired with 4 filters \
+            (RXF2-5). Read the MCP2515 datasheet for more details on masks and filters.
 
         You can use up to 6 matches (match = mask & filter) in the array. \
             The order of the match objects in the array matters. \
             The first unique mask will be placed in RXM0 and can be paired with up to 2 filters. \
             The second unique mask will be placed in RXM1 and can be paired with up to 4 filters. \
-            When no mask is defined in the match object, an 'exact match' mask of all 1's will be used. \
-            You can use the same mask in multiple matches, however if there are more than \
+            When no mask is defined in the match object, an 'exact match' mask of all 1's will be \
+            used. You can use the same mask in multiple matches, however if there are more than \
             2 unique masks in the matches array, a RuntimeError will be raised. \
             Similarly if there are more than 2 filters used with the first unique mask or \
             more than 4 filters used with the second unique mask a RuntimeError will be raised.
@@ -914,7 +914,8 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
             timeout (float, optional): dictates how long ``receive()`` will block. Defaults to 10.
 
         Returns:
-            `canio.Listener`: Listener object used to receive CANio packets based on the arguments passed into ``listen()``
+            `canio.Listener`: Listener object used to receive CANio packets based on the arguments \
+            passed into ``listen()``
         """
         if matches is None:
             matches = []
