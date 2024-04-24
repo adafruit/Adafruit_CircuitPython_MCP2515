@@ -782,7 +782,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
             else:
                 mask = STDID_BOTTOM_11_MASK
 
-        # has this mask already been setup, if so just return the index
+        # has this mask already been loaded?
         for index, existing_mask in enumerate(self._masks_in_use):
             if mask == existing_mask:
                 self._dbg("Mask Found", index, existing_mask)
@@ -793,7 +793,8 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
             next_mask_index = masks_used
 
             self._set_mask_register(next_mask_index, mask, match.extended)
-            # self._masks_in_use.append(MASKS[next_mask_index])
+            # Append the actual mask to the 'in use' array so later we can 
+            # find it to use again
             self._masks_in_use.append(mask)
             return next_mask_index
 
