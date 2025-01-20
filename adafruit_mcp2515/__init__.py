@@ -406,7 +406,8 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         Returns:
             int: The unread message count
         """
-        self._read_from_rx_buffers()
+        if len(self._unread_message_queue) == 0:
+            self._read_from_rx_buffers()
 
         return len(self._unread_message_queue)
 
