@@ -406,7 +406,12 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         Returns:
             int: The unread message count
         """
-        self._read_from_rx_buffers()
+
+        # Wait until the queue is empty before reading from the MCP2515 again,
+        # otherwise we'll fill it faster than what the user app can process
+        # and quickly run out of memory.
+        if len(self._unread_message_queue) == 0:
+            self._read_from_rx_buffers()
 
         return len(self._unread_message_queue)
 
