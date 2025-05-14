@@ -2,23 +2,21 @@
 #
 # SPDX-License-Identifier: MIT
 from time import sleep
+
 import board
 import busio
 from digitalio import DigitalInOut
-from adafruit_mcp2515.canio import Message, RemoteTransmissionRequest
-from adafruit_mcp2515 import MCP2515 as CAN
 
+from adafruit_mcp2515 import MCP2515 as CAN
+from adafruit_mcp2515.canio import Message, RemoteTransmissionRequest
 
 cs = DigitalInOut(board.D5)
 cs.switch_to_output()
 spi = busio.SPI(board.SCK, board.MOSI, board.MISO)
 
-can_bus = CAN(
-    spi, cs, loopback=True, silent=True
-)  # use loopback to test without another device
+can_bus = CAN(spi, cs, loopback=True, silent=True)  # use loopback to test without another device
 while True:
     with can_bus.listen(timeout=1.0) as listener:
-
         message = Message(id=0x1234ABCD, data=b"adafruit", extended=True)
         send_success = can_bus.send(message)
         print("Send success:", send_success)

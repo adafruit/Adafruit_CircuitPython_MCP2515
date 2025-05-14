@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 """Provides a simple timer class; see `Timer`"""
+
 from time import monotonic
 
 

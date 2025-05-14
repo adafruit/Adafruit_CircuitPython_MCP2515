@@ -4,8 +4,9 @@
 import board
 import busio
 from digitalio import DigitalInOut
-from adafruit_mcp2515.canio import Message, RemoteTransmissionRequest
+
 from adafruit_mcp2515 import MCP2515 as CAN
+from adafruit_mcp2515.canio import Message, RemoteTransmissionRequest
 
 NODE_ID = 0x1234ABCD
 
@@ -16,7 +17,6 @@ spi = busio.SPI(board.SCK, board.MOSI, board.MISO)
 can_bus = CAN(spi, cs)
 while True:
     with can_bus.listen(timeout=1.0) as listener:
-
         message = Message(id=NODE_ID, data=b"adafruit", extended=True)
         send_success = can_bus.send(message)
         print("Send success:", send_success)
