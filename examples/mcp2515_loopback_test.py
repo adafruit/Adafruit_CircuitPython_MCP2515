@@ -9,10 +9,12 @@
 # from adafruit_mcp2515.canio import Timer
 
 
+from board import D5 as CS_PIN
+from board import SPI
 from digitalio import DigitalInOut
-from board import D5 as CS_PIN, SPI
-from adafruit_mcp2515.canio import Timer, Message, RemoteTransmissionRequest
+
 from adafruit_mcp2515 import MCP2515 as CAN
+from adafruit_mcp2515.canio import Message, RemoteTransmissionRequest, Timer
 
 # from board import CAN_RX, CAN_TX
 
@@ -29,7 +31,6 @@ mb2 = [0xCA, 0xFE, 0xFA, 0xDE]
 t = Timer(timeout=5)
 while True:
     with bus() as can, can.listen(timeout=1.0) as listener:
-
         mb1.insert(0, mb2.pop())
         mb2.insert(0, mb1.pop())
         message = Message(id=0xFFAA, data=bytes(mb1 + mb2), extended=True)
@@ -43,7 +44,7 @@ while True:
             msg = listener.receive()
             print("Message from ", hex(msg.id))
             print("message data:", msg.data)
-            message_str = "::".join(["0x{:02X}".format(i) for i in msg.data])
+            message_str = "::".join([f"0x{i:02X}" for i in msg.data])
             print(message_str)
 
         # instead of sleeping, pool for messages to fill queue

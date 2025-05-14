@@ -2,12 +2,12 @@
 #
 # SPDX-License-Identifier: MIT
 
-import digitalio
 import board
 import busio
-from adafruit_mcp2515.canio import Timer
-from adafruit_mcp2515.canio import RemoteTransmissionRequest, Message
+import digitalio
+
 from adafruit_mcp2515 import MCP2515 as CAN
+from adafruit_mcp2515.canio import Message, RemoteTransmissionRequest, Timer
 
 cs = digitalio.DigitalInOut(board.D5)
 cs.switch_to_output()
@@ -38,7 +38,7 @@ while True:
             if isinstance(msg, Message):
                 if len(msg.data) > 0:
                     print("Data:", end="")
-                    message_str = ",".join(["0x{:02X}".format(i) for i in msg.data])
+                    message_str = ",".join([f"0x{i:02X}" for i in msg.data])
                     print(message_str)
 
             if isinstance(msg, RemoteTransmissionRequest):

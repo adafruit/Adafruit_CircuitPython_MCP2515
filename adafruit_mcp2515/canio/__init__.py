@@ -2,8 +2,10 @@
 #
 # SPDX-License-Identifier: MIT
 """Python implementation of the CircuitPython core `canio` API"""
+
 # pylint:disable=too-few-public-methods, invalid-name, redefined-builtin
 import time
+
 from ..timer import Timer
 
 
@@ -36,15 +38,12 @@ class Message:
 
     @data.setter
     def data(self, new_data):
-        if (new_data is None) or (not (type(new_data) in [bytes, bytearray])):
-
+        if (new_data is None) or (not (type(new_data) in {bytes, bytearray})):
             raise AttributeError(
                 "non-RTR canio.Message must have a `data` argument of type `bytes`"
             )
         if len(new_data) > 8:
-            raise AttributeError(
-                "`canio.Message` object data must be of length 8 or less"
-            )
+            raise AttributeError("`canio.Message` object data must be of length 8 or less")
         # self.rtr = False
         # self._data = new_data
         self._data = bytearray(new_data)

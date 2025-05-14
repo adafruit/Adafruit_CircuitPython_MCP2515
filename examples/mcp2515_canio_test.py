@@ -11,34 +11,32 @@
 
 CAN_TYPE = None
 try:
+    from board import CAN_RX, CAN_TX
     from canio import (
         CAN,
+        BusState,
+        Match,
         Message,
         RemoteTransmissionRequest,
-        Match,
-        BusState,
     )
-    from board import CAN_RX, CAN_TX
 
     CAN_TYPE = "SAM-E"
 
     def builtin_bus_factory():
         return CAN(rx=CAN_RX, tx=CAN_TX, baudrate=1000000, loopback=True)
 
-except ImportError as e:
+except ImportError:
     print("no native canio, trying mcp")
+    import board
     from digitalio import DigitalInOut
 
-    import board
-
+    from adafruit_mcp2515 import MCP2515 as CAN
     from adafruit_mcp2515.canio import (
+        BusState,
+        Match,
         Message,
         RemoteTransmissionRequest,
-        Match,
-        BusState,
     )
-
-    from adafruit_mcp2515 import MCP2515 as CAN
 
     CAN_TYPE = "MCP2515"
 
@@ -68,7 +66,6 @@ def test_message(_can=builtin_bus_factory):
 
 
 def test_rtr_constructor():
-
     print("Testing RemoteTransmissionRequest")
     assert RemoteTransmissionRequest(id=0, length=0).id == 0
     assert RemoteTransmissionRequest(id=1, length=0).id == 1
@@ -80,9 +77,7 @@ def test_rtr_constructor():
 
 
 def test_rtr_receive(can=builtin_bus_factory):
-
     with can() as b, b.listen(timeout=0.1) as l:
-
         for length in lengths:
             print("Test messages of length", length)
 
@@ -92,9 +87,7 @@ def test_rtr_receive(can=builtin_bus_factory):
             mi = l.receive()
             assert mi
             assert isinstance(mi, RemoteTransmissionRequest)
-            assert mi.id == 0x5555555, "Extended ID does not match: 0x{:07X}".format(
-                mi.id
-            )
+            assert mi.id == 0x5555555, f"Extended ID does not match: 0x{mi.id:07X}"
             assert mi.extended
             assert mi.length == length
 
@@ -103,9 +96,9 @@ def test_rtr_receive(can=builtin_bus_factory):
             mi = l.receive()
             assert mi
             assert isinstance(mi, RemoteTransmissionRequest)
-            assert (
-                mi.id == max_standard_id
-            ), "Max standard ID not sent/received properly: %s" % hex(mi.id)
+            assert mi.id == max_standard_id, "Max standard ID not sent/received properly: %s" % hex(
+                mi.id
+            )
             assert mi.length == length
 
             mo = RemoteTransmissionRequest(id=0x555, length=length)
@@ -116,17 +109,13 @@ def test_rtr_receive(can=builtin_bus_factory):
             assert mi.id == 0x555
             assert mi.length == length
 
-            mo = RemoteTransmissionRequest(
-                id=max_extended_id, extended=True, length=length
-            )
+            mo = RemoteTransmissionRequest(id=max_extended_id, extended=True, length=length)
             assert mo.extended
             b.send(mo)
             mi = l.receive()
             assert mi
             assert isinstance(mi, RemoteTransmissionRequest)
-            assert (
-                mi.id == max_extended_id
-            ), "Max extended ID not sent/received properly"
+            assert mi.id == max_extended_id, "Max extended ID not sent/received properly"
             assert mi.length == length
 
             data = bytes(range(length))
@@ -146,7 +135,6 @@ def test_rtr_receive(can=builtin_bus_factory):
 
 
 def test_filters1(can=builtin_bus_factory):
-
     matches = [
         Match(0x408),
         Match(0x700, mask=0x7F0),
@@ -257,7 +245,6 @@ def test_filters2(can=builtin_bus_factory):
 
 
 def test_iter(can=builtin_bus_factory):
-
     print("Test iter()")
     with can() as b, b.listen(timeout=0.1) as l:
         assert iter(l) is l
@@ -283,7 +270,6 @@ def test_iter(can=builtin_bus_factory):
 
 
 def test_mcp_standard_id_exact_filters(can=builtin_bus_factory):
-
     print("Test MCP Standard ID filters")
     standard_matches = [
         Match(0x408),
@@ -317,7 +303,6 @@ def test_mcp_standard_id_exact_filters(can=builtin_bus_factory):
 
 
 def test_mcp_standard_id_masked_filters(can=builtin_bus_factory):
-
     print("Test MCP Standard ID masked filters")
     standard_matches = [
         Match(0x400, mask=0x7F0),  # should allow 0x40*
@@ -422,12 +407,12 @@ def test_bus_state(can=builtin_bus_factory):
     print("Test `BusState` support")
 
     with can() as b:
-        assert b.state in [
+        assert b.state in {
             BusState.BUS_OFF,
             BusState.ERROR_PASSIVE,
             BusState.ERROR_WARNING,
             BusState.ERROR_ACTIVE,
-        ]
+        }
 
 
 def test_listener_deinit(can=builtin_bus_factory):

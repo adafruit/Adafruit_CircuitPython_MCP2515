@@ -25,10 +25,12 @@ Implementation Notes
 """
 
 from collections import namedtuple
-from struct import unpack_from, pack_into
+from struct import pack_into, unpack_from
 from time import sleep
-from micropython import const
+
 from adafruit_bus_device import spi_device
+from micropython import const
+
 from .canio import *
 from .timer import Timer
 
@@ -125,15 +127,13 @@ EXTID_BOTTOM_29_MASK = (1 << 29) - 1  # bottom 18 bits
 EXTID_BOTTOM_18_MASK = (1 << 18) - 1  # bottom 18 bits
 STDID_BOTTOM_11_MASK = 0x7FF
 
-EXTID_FLAG_MASK = (
-    1 << 19
-)  # to set/get the "is an extended id?" flag from a 4-byte ID buffer
+EXTID_FLAG_MASK = 1 << 19  # to set/get the "is an extended id?" flag from a 4-byte ID buffer
 
 # masks
 _MODE_MASK = const(0xE0)
 
 _RXB_RX_MASK = const(0x60)
-_RXB_BUKT_MASK = const((1 << 2))
+_RXB_BUKT_MASK = const(1 << 2)
 _RXB_RX_STDEXT = const(0x00)
 
 _STAT_RXIF_MASK = const(0x03)
@@ -292,7 +292,6 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         auto_restart: bool = False,
         debug: bool = False,
     ):
-
         if loopback and not silent:
             raise AttributeError("Loopback mode requires silent to be set")
         if auto_restart:
@@ -322,7 +321,6 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         self.initialize()
 
     def _init_buffers(self):
-
         self._tx_buffers = [
             _TransmitBuffer(
                 CTRL_REG=_TXB0CTRL,
@@ -427,7 +425,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         return self._unread_message_queue.pop(0)
 
     def _read_rx_buffer(self, read_command):
-        for i in range(len(self._buffer)):  # pylint: disable=consider-using-enumerate
+        for i in range(len(self._buffer)):
             self._buffer[i] = 0
 
         # read from buffer
@@ -453,9 +451,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         message_length = min(8, dlc & 0xF)
 
         if (dlc & _RTR_MASK) > 0:
-            frame_obj = RemoteTransmissionRequest(
-                sender_id, message_length, extended=extended
-            )
+            frame_obj = RemoteTransmissionRequest(sender_id, message_length, extended=extended)
         else:
             frame_obj = Message(
                 sender_id,
@@ -480,7 +476,6 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
             self._read_rx_buffer(_READ_RX1)
 
     def _write_message(self, tx_buffer, message_obj):
-
         if tx_buffer is None:
             raise RuntimeError("No transmit buffer available to send")
         if isinstance(message_obj, RemoteTransmissionRequest):
@@ -531,7 +526,6 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
 
     # TODO: Priority
     def _start_transmit(self, tx_buffer):
-        #
         self._buffer[0] = tx_buffer.SEND_CMD
         with self._bus_device_obj as spi:
             spi.write_readinto(
@@ -639,7 +633,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         # TODO: this should return a tuple of busy states
         # byte status = mcp2515_readStatus() & MCP_STAT_TX_PENDING_MASK
         status = self._read_status()
-        self._dbg("Status byte:", "{:#010b}".format(status))
+        self._dbg("Status byte:", f"{status:#010b}")
         return (
             bool(status & _STAT_TX0_PENDING),
             bool(status & _STAT_TX1_PENDING),
@@ -688,7 +682,6 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
             return
         self._timer.rewind_to(5)
         while not self._timer.expired:
-
             new_mode_set = self._request_new_mode(mode)
             if new_mode_set:
                 self._mode = mode
@@ -766,9 +759,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
             self._rx1_overflow,
         ) = flags
         if self._rx0_overflow or self._rx0_overflow:
-            self._mod_register(
-                _EFLG, 0xC0, 0
-            )  # clear overflow bits now that we've recorded them
+            self._mod_register(_EFLG, 0xC0, 0)  # clear overflow bits now that we've recorded them
 
         if buss_off:
             self._bus_state = BusState.BUS_OFF
@@ -806,7 +797,6 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
         raise RuntimeError("No Masks Available")
 
     def _create_filter(self, match, mask_index):
-
         next_filter_index = len(self._filters_in_use[mask_index])
         if next_filter_index == len(FILTERS[mask_index]):
             raise RuntimeError("No Filters Available")
