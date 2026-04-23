@@ -243,7 +243,7 @@ _BAUD_RATES = {
 def _tx_buffer_status_decode(status_byte):
     out_str = "Status: "
     # when CAN_H is disconnected?: 0x18
-    out_str += "\nStatus of chosen buffer: %s\n" % hex(status_byte)
+    out_str += f"\nStatus of chosen buffer: {hex(status_byte)}\n"
     if status_byte & 0x40:
         out_str += " Message ABORTED"
     if status_byte & 0x20:
@@ -484,7 +484,7 @@ class MCP2515:  # pylint:disable=too-many-instance-attributes
             dlc = len(message_obj.data)
 
         if dlc > _MAX_CAN_MSG_LEN:
-            raise AttributeError("Message/RTR length must be <=%d" % _MAX_CAN_MSG_LEN)
+            raise AttributeError(f"Message/RTR length must be <={_MAX_CAN_MSG_LEN}")
         load_command = tx_buffer.LOAD_CMD
 
         if isinstance(message_obj, RemoteTransmissionRequest):

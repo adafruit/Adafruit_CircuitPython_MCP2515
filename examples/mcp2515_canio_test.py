@@ -96,8 +96,8 @@ def test_rtr_receive(can=builtin_bus_factory):
             mi = l.receive()
             assert mi
             assert isinstance(mi, RemoteTransmissionRequest)
-            assert mi.id == max_standard_id, "Max standard ID not sent/received properly: %s" % hex(
-                mi.id
+            assert mi.id == max_standard_id, (
+                f"Max standard ID not sent/received properly: {hex(mi.id)}"
             )
             assert mi.length == length
 
